@@ -134,8 +134,23 @@ sudo chown wix-printer:wix-printer /opt/wix-printer-service
 # Add user to printer group
 sudo usermod -a -G lp wix-printer
 
-# Phase 3: Setup Python environment
-log "🐍 Phase 3: Setting up Python environment..."
+# Phase 3: Hardware Setup (USB Permissions)
+log "🔩 Phase 3: Setting up hardware permissions..."
+
+UDEV_RULE_FILE="/etc/udev/rules.d/99-wix-printer.rules"
+UDEV_RULE_CONTENT='SUBSYSTEM=="usb", ATTR{idVendor}=="04b8", ATTR{idProduct}=="0202", GROUP="wix-printer", MODE="0666"'
+
+log "Creating udev rule for USB printer access at $UDEV_RULE_FILE"
+echo "$UDEV_RULE_CONTENT" | sudo tee $UDEV_RULE_FILE > /dev/null
+
+log "Reloading udev rules..."
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+log "✅ USB permissions configured."
+
+# Phase 4: Setup Python environment
+log "🐍 Phase 4: Setting up Python environment..."
 
 # First, copy the source code to the service directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
