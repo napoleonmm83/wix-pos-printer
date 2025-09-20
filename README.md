@@ -29,18 +29,37 @@ An intelligent, autonomous printing service that runs on Raspberry Pi and automa
 git clone https://github.com/napoleonmm83/wix-pos-printer.git
 cd wix-pos-printer
 
-# 2. Run automated setup
+# 2. Run interactive setup wizard
 chmod +x scripts/raspberry-pi-quickstart.sh
-sudo ./scripts/raspberry-pi-quickstart.sh
+./scripts/raspberry-pi-quickstart.sh
 
-# 3. Configure environment
-nano .env
+# 3. The wizard will guide you through:
+#    - Wix API configuration
+#    - Automatic printer detection
+#    - Epic 2 self-healing settings
+#    - Optional email notifications
+#    - Service installation and startup
+```
 
-# 4. Setup email notifications
-python scripts/setup-notifications.py
+### **Reset/Cleanup Installation**
+```bash
+# Complete reset - removes all components
+./scripts/raspberry-pi-quickstart.sh --reset
 
-# 5. Start service
-sudo systemctl start wix-printer.service
+# After reset, you can run setup again
+./scripts/raspberry-pi-quickstart.sh
+```
+
+### **Available Setup Options**
+```bash
+# Interactive setup wizard (default)
+./scripts/raspberry-pi-quickstart.sh
+
+# Complete system reset/cleanup
+./scripts/raspberry-pi-quickstart.sh --reset
+
+# Show help and available options
+./scripts/raspberry-pi-quickstart.sh --help
 ```
 
 ### **Development Setup**

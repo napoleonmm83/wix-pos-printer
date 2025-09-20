@@ -2,10 +2,32 @@
 
 # 🍓 Raspberry Pi Quick Start Script
 # Wix Printer Service - Epic 2 Complete with Self-Healing
-# Version: 1.0
+# Version: 1.1 - Added Reset Functionality
 # Date: 2025-09-20
 
 set -e  # Exit on any error
+
+# Parse command line arguments
+RESET_MODE=false
+HELP_MODE=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --reset)
+            RESET_MODE=true
+            shift
+            ;;
+        --help|-h)
+            HELP_MODE=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
 
 # Colors for output
 RED='\033[0;31m'
@@ -27,6 +49,55 @@ error() {
     echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ERROR: $1${NC}"
 }
 
+# Help function
+show_help() {
+    echo ""
+    echo "🍓 Wix Printer Service - Raspberry Pi Setup & Management"
+    echo "=========================================="
+    echo ""
+    echo "USAGE:"
+    echo "  $0 [OPTIONS]"
+    echo ""
+    echo "OPTIONS:"
+    echo "  (no options)    Run interactive setup wizard"
+    echo "  --reset         Reset/remove complete installation"
+    echo "  --help, -h      Show this help message"
+    echo ""
+    echo "EXAMPLES:"
+    echo "  $0              # Run interactive setup"
+    echo "  $0 --reset      # Remove installation completely"
+    echo "  $0 --help       # Show this help"
+    echo ""
+    echo "FEATURES:"
+    echo "  ✅ Epic 2 Self-Healing System (Intelligent Retry, Health Monitoring, Circuit Breaker)"
+    echo "  ✅ Interactive Configuration Wizard"
+    echo "  ✅ Automatic Printer Detection"
+    echo "  ✅ Complete Reset/Cleanup Functionality"
+    echo ""
+}
+
+# Handle help mode
+if [ "$HELP_MODE" = true ]; then
+    show_help
+    exit 0
+fi
+
+# Handle reset mode
+if [ "$RESET_MODE" = true ]; then
+    # Execute the reset script
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    RESET_SCRIPT="$SCRIPT_DIR/raspberry-pi-reset.sh"
+    
+    if [ -f "$RESET_SCRIPT" ]; then
+        log "🧹 Launching Reset Script..."
+        exec bash "$RESET_SCRIPT"
+    else
+        error "Reset script not found: $RESET_SCRIPT"
+        error "Please ensure raspberry-pi-reset.sh is in the scripts directory"
+        exit 1
+    fi
+fi
+
 # Check if running as root
 if [[ $EUID -eq 0 ]]; then
    error "This script should not be run as root"
@@ -35,6 +106,9 @@ fi
 
 log "🍓 Starting Raspberry Pi Setup for Wix Printer Service"
 log "Epic 2 Complete - Self-Healing System Ready!"
+log ""
+log "💡 TIP: Use '$0 --reset' to completely remove an existing installation"
+log "💡 TIP: Use '$0 --help' for all available options"
 
 # Phase 1: System Update
 log "📦 Phase 1: Updating system packages..."
