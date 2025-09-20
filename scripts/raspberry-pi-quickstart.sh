@@ -314,50 +314,34 @@ if [ ! -f ".env" ]; then
     read -p "Press ENTER to start the configuration wizard..."
     echo ""
     
-    # Wix API Configuration
+    # Wix API Configuration (API Key method)
     echo "=========================================="
     echo "📡 STEP 1: WIX API CONFIGURATION"
     echo "=========================================="
     echo ""
-    echo "First, we need to connect to your Wix restaurant website."
+    echo "We will connect using a Wix API Key (recommended)."
     echo ""
-    echo "ℹ️  HOW TO FIND YOUR WIX CREDENTIALS:"
-    echo "   1. Go to: https://dev.wix.com/apps"
-    echo "   2. Select your app"
-    echo "   3. Go to 'OAuth' page in your app's dashboard"
-    echo "   4. Copy the 'App ID' and 'App Secret Key'"
-    echo "   5. For Site ID: Go to your site dashboard, check the URL after '/dashboard/'"
+    echo "ℹ️  HOW TO GET YOUR WIX API KEY:"
+    echo "   1) Wix Dashboard → Settings → Developer Tools → API Keys"
+    echo "   2) Create API Key with required permissions"
+    echo "   3) Copy the API Key"
+    echo "   4) Site ID: In your Wix Site dashboard URL, copy the ID after '/dashboard/'"
     echo ""
     echo "📝 If you don't have these yet, you can:"
-    echo "   - Enter 'test' for now and configure later"
+    echo "   - Enter 'test' for now (test mode)"
     echo "   - Or press CTRL+C to exit and get your credentials first"
     echo ""
     
-    echo "🔑 WIX APP ID:"
-    echo "   This is your App ID from the OAuth page"
-    echo "   Example: 714a84bf-5f5c-40c5-8ea0-a6fe7eccc7e1"
+    echo "🔑 WIX API KEY:"
+    echo "   Example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
     echo ""
-    echo -n "   👉 Enter your Wix App ID (or press ENTER for test mode): "
-    read WIX_APP_ID
-    if [ -z "$WIX_APP_ID" ]; then
-        WIX_APP_ID="test-app-id"
+    echo -n "   👉 Enter your Wix API Key (or press ENTER for test mode): "
+    read -s WIX_API_KEY
+    if [ -z "$WIX_API_KEY" ]; then
+        WIX_API_KEY="test-api-key"
     fi
     echo ""
-    echo "   ✅ App ID entered: $WIX_APP_ID"
-    echo ""
-    
-    echo "🔐 WIX APP SECRET KEY:"
-    echo "   This is your App Secret Key from the OAuth page"
-    echo "   ⚠️  Keep this private - it's like a password!"
-    echo ""
-    echo -n "   👉 Enter your Wix App Secret Key (or press ENTER for test mode): "
-    read -s WIX_APP_SECRET
-    if [ -z "$WIX_APP_SECRET" ]; then
-        WIX_APP_SECRET="test-secret"
-    fi
-    echo ""
-    echo ""
-    echo "   ✅ App Secret entered: $([ "$WIX_APP_SECRET" = "test-secret" ] && echo "TEST MODE" || echo "***HIDDEN***")"
+    echo "   ✅ API Key entered: $([ "$WIX_API_KEY" = "test-api-key" ] && echo "TEST MODE" || echo "***HIDDEN***")"
     echo ""
     
     echo "🆔 WIX SITE ID:"
@@ -386,14 +370,13 @@ if [ ! -f ".env" ]; then
     echo "   ✅ API URL: $WIX_API_BASE_URL"
     echo ""
     
-    if [ "$WIX_APP_ID" = "test-app-id" ] || [ "$WIX_APP_SECRET" = "test-secret" ] || [ "$WIX_SITE_ID" = "test-site" ]; then
-        echo "⚠️  WARNING: You're using test credentials!"
-        echo "   The service will start but won't receive real orders."
+    if [ "$WIX_API_KEY" = "test-api-key" ] || [ "$WIX_SITE_ID" = "test-site" ]; then
+        echo "⚠️  WARNING: You're in TEST MODE!"
+        echo "   The service will start but won't access real orders."
         echo "   You can update these later in the .env file."
         echo ""
     else
-        echo "✅ Wix API configured successfully!"
-        echo "   App ID: $WIX_APP_ID"
+        echo "✅ Wix API configured successfully (API Key)!"
         echo "   Site ID: $WIX_SITE_ID"
         echo ""
     fi
@@ -1029,9 +1012,8 @@ restaurant operations!
 # Database
 DATABASE_URL=sqlite:///data/wix_printer.db
 
-# Wix API Configuration (OAuth)
-WIX_APP_ID=$WIX_APP_ID
-WIX_APP_SECRET=$WIX_APP_SECRET
+# Wix API Configuration (API Key)
+WIX_API_KEY=$WIX_API_KEY
 WIX_SITE_ID=$WIX_SITE_ID
 WIX_API_BASE_URL=$WIX_API_BASE_URL
 
@@ -1077,10 +1059,10 @@ EOF"
     echo "=========================================="
     echo ""
     echo "🎯 WIX CONNECTION:"
-    echo "   App ID: $WIX_APP_ID"
+    echo "   Method: API Key"
     echo "   Site ID: $WIX_SITE_ID"
     echo "   API URL: $WIX_API_BASE_URL"
-    echo "   Status: $([ "$WIX_APP_ID" = "test-app-id" ] && echo "⚠️  Test Mode" || echo "✅ Production Ready")"
+    echo "   Status: $([ "$WIX_API_KEY" = "test-api-key" ] && echo "⚠️  Test Mode" || echo "✅ Production Ready")"
     echo ""
     echo "🖨️  PRINTER SETUP:"
     echo "   Type: $PRINTER_TYPE"
