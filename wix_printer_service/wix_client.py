@@ -57,7 +57,7 @@ class WixClient:
         try:
             # Test with a small search (recommended for eCommerce Orders API)
             response = self.session.post(
-                f'{self.base_url}/wix-ecom/v1/orders/search',
+                f'{self.base_url}/ecom/v1/orders/search',
                 json={
                     'cursorPaging': {'limit': 1},
                     'filter': { 'status': { '$ne': 'INITIALIZED' } },
@@ -96,7 +96,7 @@ class WixClient:
                 body['sort'] = [{ 'fieldName': 'createdDate', 'order': 'DESC' }]
 
             response = self.session.post(
-                f'{self.base_url}/wix-ecom/v1/orders/search',
+                f'{self.base_url}/ecom/v1/orders/search',
                 json=body,
                 timeout=30
             )
