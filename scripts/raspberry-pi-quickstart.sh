@@ -2,7 +2,7 @@
 
 # 🍓 Raspberry Pi Quick Start Script
 # Wix Printer Service - Epic 2 Complete with Self-Healing
-# Version: 1.1 - Added Reset Functionality
+# Version: 1.3 - Enhanced detection, UX, paper width & test print
 # Date: 2025-09-20
 
 set -e  # Exit on any error
