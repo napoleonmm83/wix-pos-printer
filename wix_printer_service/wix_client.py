@@ -37,8 +37,10 @@ class WixClient:
             raise WixAPIError("WIX_SITE_ID environment variable is required")
         
         self.session = requests.Session()
+        # Wix API Key auth does NOT use the "Bearer" prefix; it expects the raw API key
         self.session.headers.update({
-            'Authorization': f'Bearer {self.api_key}',
+            'Authorization': self.api_key,
+            'wix-site-id': self.site_id,
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         })
@@ -55,7 +57,7 @@ class WixClient:
         try:
             # Test with a simple API call to verify credentials
             response = self.session.get(
-                f'{self.base_url}/stores/v1/sites/{self.site_id}/orders',
+                f'{self.base_url}/stores/v1/orders',
                 params={'limit': 1},
                 timeout=10
             )
@@ -87,7 +89,7 @@ class WixClient:
             if status:
                 params['status'] = status
             response = self.session.get(
-                f'{self.base_url}/stores/v1/sites/{self.site_id}/orders',
+                f'{self.base_url}/stores/v1/orders',
                 params=params,
                 timeout=30
             )
