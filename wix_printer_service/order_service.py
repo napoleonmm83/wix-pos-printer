@@ -307,6 +307,52 @@ class OrderService:
             logger.error(f"Unexpected error processing offline order: {e}")
             return None
     
+    def ingest_order_from_api(self, wix_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Ingest a single order returned from the Wix API without duplicating print jobs.
+        If the order is new, it will be saved and print jobs will be created.
+        If the order already exists, it will be updated but print jobs will not be duplicated.
+
+        Args:
+            wix_data: Raw order data from Wix API response
+
+        Returns:
+            Dict with result info: { order_id, created_jobs, existing }
+        """
+        try:
+            order = Order.from_wix_data(wix_data)
+            # Validate order data
+            self._validate_order(order)
+
+            # Check if order already exists to avoid duplicate jobs
+            existing_order = self.database.get_order(order.id)
+
+            # Save (insert or update) order
+            saved = self.database.save_order(order)
+            created_jobs = 0
+
+            if saved and existing_order is None:
+                # Create print jobs only for new orders
+                print_jobs = self._create_print_jobs(order)
+                for print_job in print_jobs:
+                    job_id = self.database.save_print_job(print_job)
+                    if job_id:
+                        created_jobs += 1
+
+            return {
+                "order_id": order.id,
+                "created_jobs": created_jobs,
+                "existing": existing_order is not None
+            }
+
+        except (OrderValidationError, ValueError) as e:
+            logger.error(f"Order validation failed during ingest: {e}")
+            return {"error": str(e), "order_id": wix_data.get('id', None)}
+        except Exception as e:
+            logger.error(f"Unexpected error ingesting order from API: {e}")
+            return {"error": str(e), "order_id": wix_data.get('id', None)}
+
+    
     def _determine_order_priority(self, order: Order) -> QueuePriority:
         """
         Determine priority for an order in the offline queue.

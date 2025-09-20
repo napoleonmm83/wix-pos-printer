@@ -71,7 +71,7 @@ class WixClient:
             logger.error(f"Wix API connection test failed with exception: {e}")
             return False
     
-    def get_orders(self, limit: int = 50, offset: int = 0) -> Optional[Dict[str, Any]]:
+    def get_orders(self, limit: int = 50, offset: int = 0, status: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Retrieve orders from Wix API.
         
@@ -83,9 +83,12 @@ class WixClient:
             Dict containing orders data or None if failed
         """
         try:
+            params = {'limit': limit, 'offset': offset}
+            if status:
+                params['status'] = status
             response = self.session.get(
                 f'{self.base_url}/stores/v1/sites/{self.site_id}/orders',
-                params={'limit': limit, 'offset': offset},
+                params=params,
                 timeout=30
             )
             

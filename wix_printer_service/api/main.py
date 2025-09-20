@@ -3,6 +3,7 @@ FastAPI application for the Wix Printer Service.
 Provides REST API endpoints for monitoring and webhook handling.
 """
 import os
+import asyncio
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
 import logging
@@ -269,6 +270,61 @@ async def webhook_orders(
     except Exception as e:
         logger.error(f"Error processing webhook: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/orders/sync", tags=["Orders"], response_model=dict)
+def sync_orders(
+    status: Optional[str] = "pending",
+    limit: int = 50,
+    offset: int = 0,
+    wix_client: WixClient = Depends(get_wix_client),
+    order_service: OrderService = Depends(get_order_service)
+):
+    """
+    Pull latest orders from Wix API and ingest them into the local database.
+    Creates print jobs only for new orders to avoid duplicates.
+    """
+    if not wix_client:
+        raise HTTPException(status_code=503, detail="Wix client not configured (set WIX_API_KEY and WIX_SITE_ID)")
+
+    try:
+        data = wix_client.get_orders(limit=limit, offset=offset, status=status)
+        orders_list = []
+        # Flexible parsing of API result
+        if isinstance(data, dict):
+            if "orders" in data and isinstance(data["orders"], list):
+                orders_list = data["orders"]
+            elif "data" in data and isinstance(data["data"], list):
+                orders_list = data["data"]
+        elif isinstance(data, list):
+            orders_list = data
+
+        processed = 0
+        created_jobs = 0
+        existing = 0
+        errors = 0
+        for o in orders_list:
+            result = order_service.ingest_order_from_api(o)
+            if "error" in result:
+                errors += 1
+                logger.warning(f"Ingest error for order {result.get('order_id')}: {result['error']}")
+                continue
+            processed += 1
+            created_jobs += int(result.get("created_jobs", 0))
+            if result.get("existing"):
+                existing += 1
+
+        return {
+            "status": "ok",
+            "fetched": len(orders_list),
+            "processed": processed,
+            "created_jobs": created_jobs,
+            "existing": existing,
+            "errors": errors
+        }
+    except Exception as e:
+        logger.error(f"Order sync failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Order sync failed: {e}")
 
 
 @app.get("/orders/{order_id}", tags=["Orders"])
