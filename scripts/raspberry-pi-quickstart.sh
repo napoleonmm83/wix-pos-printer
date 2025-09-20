@@ -62,11 +62,20 @@ sudo usermod -a -G lp wix-printer
 
 # Phase 3: Setup Python environment
 log "🐍 Phase 3: Setting up Python environment..."
+
+# First, copy the source code to the service directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+log "Copying source code from $PROJECT_DIR to /opt/wix-printer-service..."
+sudo cp -r "$PROJECT_DIR"/* /opt/wix-printer-service/
+sudo chown -R wix-printer:wix-printer /opt/wix-printer-service
+
 cd /opt/wix-printer-service
 
 # Check if we're in the right directory with source code
 if [ ! -f "requirements.txt" ]; then
-    error "requirements.txt not found. Please ensure you're running this from the project directory or copy the source code first."
+    error "requirements.txt not found after copying source code."
     exit 1
 fi
 
