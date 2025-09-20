@@ -277,7 +277,11 @@ if [ ! -f ".env" ]; then
     echo "   This is your App ID from the OAuth page"
     echo "   Example: 714a84bf-5f5c-40c5-8ea0-a6fe7eccc7e1"
     echo ""
-    WIX_APP_ID=$(get_input "   👉 Enter your Wix App ID (or 'test-app-id' for testing)" "test-app-id")
+    echo -n "   👉 Enter your Wix App ID (or press ENTER for test mode): "
+    read WIX_APP_ID
+    if [ -z "$WIX_APP_ID" ]; then
+        WIX_APP_ID="test-app-id"
+    fi
     echo ""
     echo "   ✅ App ID entered: $WIX_APP_ID"
     echo ""
@@ -286,7 +290,12 @@ if [ ! -f ".env" ]; then
     echo "   This is your App Secret Key from the OAuth page"
     echo "   ⚠️  Keep this private - it's like a password!"
     echo ""
-    WIX_APP_SECRET=$(get_input "   👉 Enter your Wix App Secret Key (or 'test-secret' for testing)" "test-secret" "true")
+    echo -n "   👉 Enter your Wix App Secret Key (or press ENTER for test mode): "
+    read -s WIX_APP_SECRET
+    if [ -z "$WIX_APP_SECRET" ]; then
+        WIX_APP_SECRET="test-secret"
+    fi
+    echo ""
     echo ""
     echo "   ✅ App Secret entered: $([ "$WIX_APP_SECRET" = "test-secret" ] && echo "TEST MODE" || echo "***HIDDEN***")"
     echo ""
@@ -296,7 +305,11 @@ if [ ! -f ".env" ]; then
     echo "   Find it in your site dashboard URL after '/dashboard/'"
     echo "   Example: 12345678-1234-1234-1234-123456789abc"
     echo ""
-    WIX_SITE_ID=$(get_input "   👉 Enter your Wix Site ID (or 'test-site' for testing)" "test-site")
+    echo -n "   👉 Enter your Wix Site ID (or press ENTER for test mode): "
+    read WIX_SITE_ID
+    if [ -z "$WIX_SITE_ID" ]; then
+        WIX_SITE_ID="test-site"
+    fi
     echo ""
     echo "   ✅ Site ID entered: $WIX_SITE_ID"
     echo ""
@@ -304,7 +317,13 @@ if [ ! -f ".env" ]; then
     echo "🌐 WIX API URL:"
     echo "   This is the Wix server address (usually don't change this)"
     echo ""
-    WIX_API_BASE_URL=$(get_input "   👉 Wix API Base URL" "https://www.wixapis.com")
+    echo -n "   👉 Wix API Base URL (or press ENTER for default): "
+    read WIX_API_BASE_URL
+    if [ -z "$WIX_API_BASE_URL" ]; then
+        WIX_API_BASE_URL="https://www.wixapis.com"
+    fi
+    echo ""
+    echo "   ✅ API URL: $WIX_API_BASE_URL"
     echo ""
     
     if [ "$WIX_APP_ID" = "test-app-id" ] || [ "$WIX_APP_SECRET" = "test-secret" ] || [ "$WIX_SITE_ID" = "test-site" ]; then
