@@ -736,12 +736,18 @@ restaurant operations!
                 # Try to print as wix-printer (member of lp group) via tee
                 if printf "%s" "$TEST_CONTENT" | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1; then
                     echo "   ✅ Test receipt printed successfully!"
+                    # Feed a few lines and issue ESC/POS cut (full cut)
+                    printf '\n\n\n' | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1 || true
+                    printf '\x1D\x56\x00' | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1 || true
                 else
                     echo "   ⚠️  Test print failed - attempting permission fix (lp group + 660)"
                     sudo chgrp lp "$PRINTER_DEVICE_PATH" 2>/dev/null || true
                     sudo chmod 660 "$PRINTER_DEVICE_PATH" 2>/dev/null || true
                     if printf "%s" "$TEST_CONTENT" | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1; then
                         echo "   ✅ Test receipt printed successfully after permission fix!"
+                        # Feed and cut after successful retry
+                        printf '\n\n\n' | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1 || true
+                        printf '\x1D\x56\x00' | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1 || true
                     else
                         echo "   ❌ Still cannot write to $PRINTER_DEVICE_PATH"
                         echo "   🔎 Details:"
