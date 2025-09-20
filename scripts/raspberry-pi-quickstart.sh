@@ -272,11 +272,28 @@ if [ ! -f ".env" ]; then
     echo "   - Or press CTRL+C to exit and get your credentials first"
     echo ""
     
-    WIX_API_KEY=$(get_input "🔑 Enter your Wix API Key (or 'test' for testing)" "test" "true")
+    echo "🔑 WIX API KEY:"
+    echo "   This is your secret key to connect to Wix"
+    echo "   ⚠️  Keep this private - it's like a password!"
     echo ""
-    WIX_SITE_ID=$(get_input "🆔 Enter your Wix Site ID (or 'test-site' for testing)" "test-site")
+    WIX_API_KEY=$(get_input "   👉 Enter your Wix API Key (or 'test' for testing)" "test" "true")
     echo ""
-    WIX_API_BASE_URL=$(get_input "🌐 Wix API Base URL (leave default unless you know what you're doing)" "https://www.wixapis.com")
+    echo "   ✅ API Key entered: $([ "$WIX_API_KEY" = "test" ] && echo "TEST MODE" || echo "***HIDDEN***")"
+    echo ""
+    
+    echo "🆔 WIX SITE ID:"
+    echo "   This identifies your specific restaurant website"
+    echo "   Example: 12345678-1234-1234-1234-123456789abc"
+    echo ""
+    WIX_SITE_ID=$(get_input "   👉 Enter your Wix Site ID (or 'test-site' for testing)" "test-site")
+    echo ""
+    echo "   ✅ Site ID entered: $WIX_SITE_ID"
+    echo ""
+    
+    echo "🌐 WIX API URL:"
+    echo "   This is the Wix server address (usually don't change this)"
+    echo ""
+    WIX_API_BASE_URL=$(get_input "   👉 Wix API Base URL" "https://www.wixapis.com")
     echo ""
     
     if [ "$WIX_API_KEY" = "test" ] || [ "$WIX_SITE_ID" = "test-site" ]; then
@@ -313,14 +330,57 @@ if [ ! -f ".env" ]; then
         echo ""
         
         echo "1️⃣ PRINTER TYPE:"
-        echo "   Usually 'epson' for Epson TM-m30III"
-        PRINTER_TYPE=$(get_input "   Enter printer type" "epson")
+        echo "   What type of printer do you have?"
+        echo ""
+        echo "   1) Epson (TM-m30III, TM-T88V, etc.) ⭐"
+        echo "   2) Other thermal printer"
+        echo ""
+        
+        while true; do
+            read -p "   👉 Choose printer type (1-2, or press ENTER for Epson): " printer_choice
+            
+            case $printer_choice in
+                1|"")
+                    PRINTER_TYPE="epson"
+                    break
+                    ;;
+                2)
+                    PRINTER_TYPE=$(get_input "   Enter printer type" "thermal")
+                    break
+                    ;;
+                *)
+                    echo "   ❌ Please enter 1 or 2"
+                    ;;
+            esac
+        done
+        echo "   ✅ Printer type: $PRINTER_TYPE"
         echo ""
         
         echo "2️⃣ CONNECTION TYPE:"
-        echo "   • 'usb' = Connected via USB cable"
-        echo "   • 'network' = Connected via WiFi/Ethernet"
-        PRINTER_INTERFACE=$(get_input "   Enter connection type (usb/network)" "usb")
+        echo "   How is your printer connected?"
+        echo ""
+        echo "   1) USB cable ⭐"
+        echo "   2) Network/WiFi/Ethernet"
+        echo ""
+        
+        while true; do
+            read -p "   👉 Choose connection type (1-2, or press ENTER for USB): " connection_choice
+            
+            case $connection_choice in
+                1|"")
+                    PRINTER_INTERFACE="usb"
+                    break
+                    ;;
+                2)
+                    PRINTER_INTERFACE="network"
+                    break
+                    ;;
+                *)
+                    echo "   ❌ Please enter 1 or 2"
+                    ;;
+            esac
+        done
+        echo "   ✅ Connection type: $PRINTER_INTERFACE"
         echo ""
         
         if [ "$PRINTER_INTERFACE" = "network" ]; then
@@ -330,8 +390,40 @@ if [ ! -f ".env" ]; then
             PRINTER_DEVICE_PATH=$(get_input "   Enter printer IP address" "192.168.1.100")
         else
             echo "3️⃣ USB DEVICE PATH:"
-            echo "   Common paths: /dev/usb/lp0, /dev/lp0, /dev/usb/lp1"
-            PRINTER_DEVICE_PATH=$(get_input "   Enter USB device path" "/dev/usb/lp0")
+            echo "   Which USB port is your printer connected to?"
+            echo ""
+            echo "   1) /dev/usb/lp0 (most common) ⭐"
+            echo "   2) /dev/lp0 (alternative)"
+            echo "   3) /dev/usb/lp1 (second USB printer)"
+            echo "   4) Custom path"
+            echo ""
+            
+            while true; do
+                read -p "   👉 Choose USB device path (1-4, or press ENTER for default): " usb_choice
+                
+                case $usb_choice in
+                    1|"")
+                        PRINTER_DEVICE_PATH="/dev/usb/lp0"
+                        break
+                        ;;
+                    2)
+                        PRINTER_DEVICE_PATH="/dev/lp0"
+                        break
+                        ;;
+                    3)
+                        PRINTER_DEVICE_PATH="/dev/usb/lp1"
+                        break
+                        ;;
+                    4)
+                        PRINTER_DEVICE_PATH=$(get_input "   Enter custom USB device path" "/dev/usb/lp0")
+                        break
+                        ;;
+                    *)
+                        echo "   ❌ Please enter 1, 2, 3, or 4"
+                        ;;
+                esac
+            done
+            echo "   ✅ USB device path: $PRINTER_DEVICE_PATH"
         fi
         
     elif [[ "$PRINTER_DETECTION" == usb:* ]]; then
@@ -368,12 +460,18 @@ if [ ! -f ".env" ]; then
     fi
     echo ""
     
-    echo "📋 PRINTER CONFIGURATION SUMMARY:"
-    echo "   Type: $PRINTER_TYPE"
-    echo "   Connection: $PRINTER_INTERFACE"
-    echo "   Address: $PRINTER_DEVICE_PATH"
+    echo "=========================================="
+    echo "📋 PRINTER CONFIGURATION SUMMARY"
+    echo "=========================================="
     echo ""
-    read -p "Press ENTER to continue..."
+    echo "🖨️  PRINTER DETAILS:"
+    echo "   • Printer Type: $PRINTER_TYPE"
+    echo "   • Connection Method: $PRINTER_INTERFACE"
+    echo "   • Device Address: $PRINTER_DEVICE_PATH"
+    echo ""
+    echo "✅ Your printer is now configured and ready!"
+    echo ""
+    read -p "👉 Press ENTER to continue to service configuration..."
     echo ""
     
     # Service Configuration
@@ -384,21 +482,54 @@ if [ ! -f ".env" ]; then
     echo "Now let's configure how the service runs on your Raspberry Pi..."
     echo ""
     echo "🌐 NETWORK SETTINGS:"
-    echo "   The service needs to listen for connections."
-    echo "   • Host '0.0.0.0' = Accept connections from any device"
+    echo "   The service needs to listen for connections from your restaurant system."
+    echo ""
+    echo "   • Host '0.0.0.0' = Accept connections from any device (recommended)"
     echo "   • Port '8000' = Standard web service port"
     echo ""
-    SERVICE_HOST=$(get_input "🌐 Service host (leave default to accept all connections)" "0.0.0.0")
-    SERVICE_PORT=$(get_input "🔌 Service port (8000 is recommended)" "8000")
+    SERVICE_HOST=$(get_input "   👉 Service host (leave default for normal use)" "0.0.0.0")
+    echo "   ✅ Host configured: $SERVICE_HOST"
+    echo ""
+    SERVICE_PORT=$(get_input "   👉 Service port (8000 is standard)" "8000")
+    echo "   ✅ Port configured: $SERVICE_PORT"
     echo ""
     
-    echo "📝 LOGGING LEVEL:"
-    echo "   • DEBUG = Very detailed logs (for troubleshooting)"
-    echo "   • INFO = Normal operation logs (recommended)"
-    echo "   • WARNING = Only warnings and errors"
-    echo "   • ERROR = Only error messages"
+    echo "📝 LOGGING DETAIL LEVEL:"
+    echo "   How much detail do you want in the log files?"
     echo ""
-    LOG_LEVEL=$(get_input "📊 Log level" "INFO")
+    echo "   1) DEBUG   - Very detailed logs (for troubleshooting)"
+    echo "   2) INFO    - Normal operation logs (recommended) ⭐"
+    echo "   3) WARNING - Only warnings and errors"
+    echo "   4) ERROR   - Only error messages"
+    echo ""
+    
+    while true; do
+        read -p "   👉 Choose log level (1-4, or press ENTER for default): " log_choice
+        
+        case $log_choice in
+            1)
+                LOG_LEVEL="DEBUG"
+                break
+                ;;
+            2|"")
+                LOG_LEVEL="INFO"
+                break
+                ;;
+            3)
+                LOG_LEVEL="WARNING"
+                break
+                ;;
+            4)
+                LOG_LEVEL="ERROR"
+                break
+                ;;
+            *)
+                echo "   ❌ Please enter 1, 2, 3, or 4"
+                ;;
+        esac
+    done
+    
+    echo "   ✅ Logging configured: $LOG_LEVEL level"
     echo ""
     
     # Epic 2 Self-Healing Configuration
@@ -417,19 +548,28 @@ if [ ! -f ".env" ]; then
     echo ""
     
     echo "🔄 INTELLIGENT RETRY SETTINGS:"
-    echo "   How often should we check system health?"
-    HEALTH_CHECK_INTERVAL=$(get_input "   Health check interval in seconds (30 = every 30 seconds)" "30")
     echo ""
-    echo "   How many times should we retry a failed print job?"
-    RETRY_MAX_ATTEMPTS=$(get_input "   Maximum retry attempts (5 = try 5 times before giving up)" "5")
+    echo "   ❓ How often should we check if everything is working properly?"
+    HEALTH_CHECK_INTERVAL=$(get_input "   👉 Health check interval in seconds (30 = every 30 seconds)" "30")
+    echo "   ✅ Health checks every $HEALTH_CHECK_INTERVAL seconds"
+    echo ""
+    
+    echo "   ❓ How many times should we retry if a print job fails?"
+    RETRY_MAX_ATTEMPTS=$(get_input "   👉 Maximum retry attempts (5 = try 5 times before giving up)" "5")
+    echo "   ✅ Will retry failed jobs $RETRY_MAX_ATTEMPTS times"
     echo ""
     
     echo "⚡ CIRCUIT BREAKER PROTECTION:"
-    echo "   How many failures before we 'open the circuit' to prevent damage?"
-    CIRCUIT_BREAKER_FAILURE_THRESHOLD=$(get_input "   Failure threshold (3 = open circuit after 3 failures)" "3")
+    echo "   This protects your system from cascading failures"
     echo ""
-    echo "   How long should we wait before trying again?"
-    CIRCUIT_BREAKER_TIMEOUT=$(get_input "   Circuit breaker timeout in seconds (60 = wait 1 minute)" "60")
+    echo "   ❓ How many failures before we temporarily stop trying?"
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD=$(get_input "   👉 Failure threshold (3 = stop after 3 failures)" "3")
+    echo "   ✅ Circuit breaker activates after $CIRCUIT_BREAKER_FAILURE_THRESHOLD failures"
+    echo ""
+    
+    echo "   ❓ How long should we wait before trying again?"
+    CIRCUIT_BREAKER_TIMEOUT=$(get_input "   👉 Wait time in seconds (60 = wait 1 minute)" "60")
+    echo "   ✅ Will wait $CIRCUIT_BREAKER_TIMEOUT seconds before retrying"
     echo ""
     
     echo "✅ Epic 2 Self-Healing configured!"
@@ -466,20 +606,34 @@ if [ ! -f ".env" ]; then
         echo "• Yahoo: smtp.mail.yahoo.com, port 587"
         echo ""
         
-        SMTP_SERVER=$(get_input "📬 SMTP server (e.g., smtp.gmail.com)" "smtp.gmail.com")
-        SMTP_PORT=$(get_input "🔌 SMTP port (587 for most providers)" "587")
+        echo "📬 EMAIL SERVER SETTINGS:"
+        SMTP_SERVER=$(get_input "   👉 SMTP server (e.g., smtp.gmail.com)" "smtp.gmail.com")
+        echo "   ✅ Using server: $SMTP_SERVER"
+        echo ""
+        SMTP_PORT=$(get_input "   👉 SMTP port (587 for most providers)" "587")
+        echo "   ✅ Using port: $SMTP_PORT"
         echo ""
         
-        echo "🔐 EMAIL CREDENTIALS:"
-        echo "   ⚠️  For Gmail, you'll need an 'App Password', not your regular password!"
-        echo "   Go to: Google Account > Security > App Passwords"
+        echo "🔐 EMAIL ACCOUNT CREDENTIALS:"
+        echo "   ⚠️  IMPORTANT: For Gmail, you need an 'App Password'!"
+        echo "   📖 How to get Gmail App Password:"
+        echo "      1. Go to: Google Account > Security > App Passwords"
+        echo "      2. Generate a new app password"
+        echo "      3. Use that password here (not your regular Gmail password)"
         echo ""
-        SMTP_USERNAME=$(get_input "📧 Your email address" "")
-        SMTP_PASSWORD=$(get_input "🔑 Email password (or App Password for Gmail)" "" "true")
+        SMTP_USERNAME=$(get_input "   👉 Your email address" "")
+        echo "   ✅ Email account: $SMTP_USERNAME"
+        echo ""
+        SMTP_PASSWORD=$(get_input "   👉 Email password (App Password for Gmail)" "" "true")
+        echo "   ✅ Password configured (hidden for security)"
         echo ""
         
-        NOTIFICATION_FROM_EMAIL=$(get_input "📤 From email address (usually same as username)" "$SMTP_USERNAME")
-        NOTIFICATION_TO_EMAIL=$(get_input "📥 Alert destination email (where to send alerts)" "$SMTP_USERNAME")
+        echo "📧 NOTIFICATION SETTINGS:"
+        NOTIFICATION_FROM_EMAIL=$(get_input "   👉 From email (usually same as above)" "$SMTP_USERNAME")
+        echo "   ✅ Alerts will be sent from: $NOTIFICATION_FROM_EMAIL"
+        echo ""
+        NOTIFICATION_TO_EMAIL=$(get_input "   👉 Where to send alerts (your manager email)" "$SMTP_USERNAME")
+        echo "   ✅ Alerts will be sent to: $NOTIFICATION_TO_EMAIL"
         SMTP_USE_TLS="true"
         
         echo ""
