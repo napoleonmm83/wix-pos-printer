@@ -171,77 +171,248 @@ if [ ! -f ".env" ]; then
     echo "🔧 INTERACTIVE CONFIGURATION SETUP"
     echo "=========================================="
     echo ""
-    echo "Let's configure your Wix Printer Service with Epic 2 Self-Healing capabilities!"
+    echo "Welcome! This setup wizard will configure your Wix Restaurant Printer Service"
+    echo "with Epic 2 Self-Healing capabilities (automatic retry, health monitoring, etc.)"
+    echo ""
+    echo "We'll ask you a few questions to configure everything automatically."
+    echo "Don't worry - we'll explain what each setting does!"
+    echo ""
+    read -p "Press ENTER to start the configuration wizard..."
     echo ""
     
     # Wix API Configuration
-    echo "📡 WIX API CONFIGURATION"
-    echo "----------------------------------------"
-    WIX_API_KEY=$(get_input "Enter your Wix API Key" "" "true")
-    WIX_SITE_ID=$(get_input "Enter your Wix Site ID" "")
-    WIX_API_BASE_URL=$(get_input "Wix API Base URL" "https://www.wixapis.com")
+    echo "=========================================="
+    echo "📡 STEP 1: WIX API CONFIGURATION"
+    echo "=========================================="
+    echo ""
+    echo "First, we need to connect to your Wix restaurant website."
+    echo ""
+    echo "ℹ️  HOW TO FIND YOUR WIX CREDENTIALS:"
+    echo "   1. Go to your Wix Dashboard"
+    echo "   2. Navigate to Settings > Business Info"
+    echo "   3. Look for 'Site ID' or 'Business ID'"
+    echo "   4. For API Key: Go to Settings > Integrations > API Keys"
+    echo ""
+    echo "📝 If you don't have these yet, you can:"
+    echo "   - Enter 'test' for now and configure later"
+    echo "   - Or press CTRL+C to exit and get your credentials first"
     echo ""
     
+    WIX_API_KEY=$(get_input "🔑 Enter your Wix API Key (or 'test' for testing)" "test" "true")
+    echo ""
+    WIX_SITE_ID=$(get_input "🆔 Enter your Wix Site ID (or 'test-site' for testing)" "test-site")
+    echo ""
+    WIX_API_BASE_URL=$(get_input "🌐 Wix API Base URL (leave default unless you know what you're doing)" "https://www.wixapis.com")
+    echo ""
+    
+    if [ "$WIX_API_KEY" = "test" ] || [ "$WIX_SITE_ID" = "test-site" ]; then
+        echo "⚠️  WARNING: You're using test credentials!"
+        echo "   The service will start but won't receive real orders."
+        echo "   You can update these later in the .env file."
+        echo ""
+    else
+        echo "✅ Wix API configured successfully!"
+        echo ""
+    fi
+    
     # Printer Detection and Configuration
-    echo "🖨️ PRINTER CONFIGURATION"
-    echo "----------------------------------------"
+    echo "=========================================="
+    echo "🖨️ STEP 2: PRINTER DETECTION & SETUP"
+    echo "=========================================="
+    echo ""
+    echo "Now let's find and configure your Epson TM-m30III printer..."
+    echo ""
+    echo "🔍 SCANNING FOR PRINTERS..."
     PRINTER_DETECTION=$(detect_printer)
+    echo ""
     
     if [ "$PRINTER_DETECTION" = "none" ]; then
-        echo "Manual printer configuration required:"
-        PRINTER_TYPE=$(get_input "Printer type" "epson")
-        PRINTER_INTERFACE=$(get_input "Printer interface (usb/network)" "usb")
-        PRINTER_DEVICE_PATH=$(get_input "Printer device path" "/dev/usb/lp0")
+        echo "❌ NO PRINTER DETECTED AUTOMATICALLY"
+        echo ""
+        echo "This could mean:"
+        echo "• Your printer is not connected via USB"
+        echo "• Your printer is connected via network/WiFi"
+        echo "• Your printer is not powered on"
+        echo "• Your printer is not an Epson model"
+        echo ""
+        echo "📝 MANUAL CONFIGURATION REQUIRED:"
+        echo ""
+        
+        echo "1️⃣ PRINTER TYPE:"
+        echo "   Usually 'epson' for Epson TM-m30III"
+        PRINTER_TYPE=$(get_input "   Enter printer type" "epson")
+        echo ""
+        
+        echo "2️⃣ CONNECTION TYPE:"
+        echo "   • 'usb' = Connected via USB cable"
+        echo "   • 'network' = Connected via WiFi/Ethernet"
+        PRINTER_INTERFACE=$(get_input "   Enter connection type (usb/network)" "usb")
+        echo ""
+        
+        if [ "$PRINTER_INTERFACE" = "network" ]; then
+            echo "3️⃣ NETWORK PRINTER IP:"
+            echo "   Find your printer's IP address on the printer display"
+            echo "   or in your router's device list"
+            PRINTER_DEVICE_PATH=$(get_input "   Enter printer IP address" "192.168.1.100")
+        else
+            echo "3️⃣ USB DEVICE PATH:"
+            echo "   Common paths: /dev/usb/lp0, /dev/lp0, /dev/usb/lp1"
+            PRINTER_DEVICE_PATH=$(get_input "   Enter USB device path" "/dev/usb/lp0")
+        fi
+        
     elif [[ "$PRINTER_DETECTION" == usb:* ]]; then
         PRINTER_TYPE="epson"
         PRINTER_INTERFACE="usb"
         PRINTER_DEVICE_PATH="${PRINTER_DETECTION#usb:}"
-        log "✅ Auto-configured USB printer: $PRINTER_DEVICE_PATH"
+        echo "🎉 GREAT! PRINTER FOUND AND CONFIGURED AUTOMATICALLY!"
+        echo ""
+        echo "✅ Detected: Epson printer via USB"
+        echo "✅ Device path: $PRINTER_DEVICE_PATH"
+        echo "✅ Configuration: Ready to use!"
+        
     elif [ "$PRINTER_DETECTION" = "usb" ]; then
         PRINTER_TYPE="epson"
         PRINTER_INTERFACE="usb"
         PRINTER_DEVICE_PATH="/dev/usb/lp0"
-        log "✅ Auto-configured USB printer"
+        echo "🎉 GREAT! PRINTER FOUND AND CONFIGURED AUTOMATICALLY!"
+        echo ""
+        echo "✅ Detected: Epson printer via USB"
+        echo "✅ Device path: $PRINTER_DEVICE_PATH"
+        echo "✅ Configuration: Ready to use!"
+        
     elif [ "$PRINTER_DETECTION" = "network" ]; then
         PRINTER_TYPE="epson"
         PRINTER_INTERFACE="network"
-        PRINTER_DEVICE_PATH=$(get_input "Printer IP address" "192.168.1.100")
-        log "✅ Configured network printer"
+        echo "🎉 NETWORK PRINTER DETECTED!"
+        echo ""
+        echo "✅ Found: Epson printer on network"
+        echo ""
+        echo "📝 We need the printer's IP address to connect:"
+        echo "   Check your printer display or router settings"
+        PRINTER_DEVICE_PATH=$(get_input "   Enter printer IP address" "192.168.1.100")
+        echo "✅ Network printer configured!"
     fi
     echo ""
     
+    echo "📋 PRINTER CONFIGURATION SUMMARY:"
+    echo "   Type: $PRINTER_TYPE"
+    echo "   Connection: $PRINTER_INTERFACE"
+    echo "   Address: $PRINTER_DEVICE_PATH"
+    echo ""
+    read -p "Press ENTER to continue..."
+    echo ""
+    
     # Service Configuration
-    echo "⚙️ SERVICE CONFIGURATION"
-    echo "----------------------------------------"
-    SERVICE_HOST=$(get_input "Service host" "0.0.0.0")
-    SERVICE_PORT=$(get_input "Service port" "8000")
-    LOG_LEVEL=$(get_input "Log level (DEBUG/INFO/WARNING/ERROR)" "INFO")
+    echo "=========================================="
+    echo "⚙️ STEP 3: SERVICE CONFIGURATION"
+    echo "=========================================="
+    echo ""
+    echo "Now let's configure how the service runs on your Raspberry Pi..."
+    echo ""
+    echo "🌐 NETWORK SETTINGS:"
+    echo "   The service needs to listen for connections."
+    echo "   • Host '0.0.0.0' = Accept connections from any device"
+    echo "   • Port '8000' = Standard web service port"
+    echo ""
+    SERVICE_HOST=$(get_input "🌐 Service host (leave default to accept all connections)" "0.0.0.0")
+    SERVICE_PORT=$(get_input "🔌 Service port (8000 is recommended)" "8000")
+    echo ""
+    
+    echo "📝 LOGGING LEVEL:"
+    echo "   • DEBUG = Very detailed logs (for troubleshooting)"
+    echo "   • INFO = Normal operation logs (recommended)"
+    echo "   • WARNING = Only warnings and errors"
+    echo "   • ERROR = Only error messages"
+    echo ""
+    LOG_LEVEL=$(get_input "📊 Log level" "INFO")
     echo ""
     
     # Epic 2 Self-Healing Configuration
-    echo "🏥 EPIC 2 SELF-HEALING CONFIGURATION"
-    echo "----------------------------------------"
-    echo "Configure intelligent retry, health monitoring, and circuit breaker settings:"
-    HEALTH_CHECK_INTERVAL=$(get_input "Health check interval (seconds)" "30")
-    RETRY_MAX_ATTEMPTS=$(get_input "Maximum retry attempts" "5")
-    CIRCUIT_BREAKER_FAILURE_THRESHOLD=$(get_input "Circuit breaker failure threshold" "3")
-    CIRCUIT_BREAKER_TIMEOUT=$(get_input "Circuit breaker timeout (seconds)" "60")
+    echo "=========================================="
+    echo "🏥 STEP 4: EPIC 2 SELF-HEALING FEATURES"
+    echo "=========================================="
+    echo ""
+    echo "Epic 2 includes advanced self-healing capabilities!"
+    echo "These features make your printer service nearly bulletproof:"
+    echo ""
+    echo "• 🔄 Intelligent Retry = Automatically retry failed print jobs"
+    echo "• 🏥 Health Monitoring = Watch system resources (memory, CPU)"
+    echo "• ⚡ Circuit Breaker = Protect against cascading failures"
+    echo ""
+    echo "Let's configure these advanced features:"
+    echo ""
+    
+    echo "🔄 INTELLIGENT RETRY SETTINGS:"
+    echo "   How often should we check system health?"
+    HEALTH_CHECK_INTERVAL=$(get_input "   Health check interval in seconds (30 = every 30 seconds)" "30")
+    echo ""
+    echo "   How many times should we retry a failed print job?"
+    RETRY_MAX_ATTEMPTS=$(get_input "   Maximum retry attempts (5 = try 5 times before giving up)" "5")
+    echo ""
+    
+    echo "⚡ CIRCUIT BREAKER PROTECTION:"
+    echo "   How many failures before we 'open the circuit' to prevent damage?"
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD=$(get_input "   Failure threshold (3 = open circuit after 3 failures)" "3")
+    echo ""
+    echo "   How long should we wait before trying again?"
+    CIRCUIT_BREAKER_TIMEOUT=$(get_input "   Circuit breaker timeout in seconds (60 = wait 1 minute)" "60")
+    echo ""
+    
+    echo "✅ Epic 2 Self-Healing configured!"
+    echo "   Your printer service will now automatically:"
+    echo "   • Retry failed operations with intelligent backoff"
+    echo "   • Monitor system health every $HEALTH_CHECK_INTERVAL seconds"
+    echo "   • Protect against failures with circuit breakers"
     echo ""
     
     # Email Notifications
-    echo "📧 EMAIL NOTIFICATIONS (Optional - can be configured later)"
-    echo "----------------------------------------"
-    echo "Configure email notifications for critical events:"
-    read -p "Do you want to configure email notifications now? (y/N): " -n 1 -r
+    echo "=========================================="
+    echo "📧 STEP 5: EMAIL NOTIFICATIONS (OPTIONAL)"
+    echo "=========================================="
+    echo ""
+    echo "The service can send you email alerts when critical issues occur:"
+    echo ""
+    echo "• 🚨 Printer offline or out of paper"
+    echo "• 💾 System running low on memory"
+    echo "• 🔥 CPU usage too high"
+    echo "• ⚡ Circuit breakers activated"
+    echo ""
+    echo "This is OPTIONAL - you can skip this and configure it later."
+    echo ""
+    read -p "❓ Do you want to configure email notifications now? (y/N): " -n 1 -r
     echo
+    echo ""
+    
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        SMTP_SERVER=$(get_input "SMTP server (e.g., smtp.gmail.com)" "")
-        SMTP_PORT=$(get_input "SMTP port" "587")
-        SMTP_USERNAME=$(get_input "SMTP username/email" "")
-        SMTP_PASSWORD=$(get_input "SMTP password" "" "true")
-        NOTIFICATION_FROM_EMAIL=$(get_input "From email address" "$SMTP_USERNAME")
-        NOTIFICATION_TO_EMAIL=$(get_input "To email address (for alerts)" "")
+        echo "📧 EMAIL NOTIFICATION SETUP:"
+        echo ""
+        echo "We'll need your email provider settings. Common examples:"
+        echo "• Gmail: smtp.gmail.com, port 587"
+        echo "• Outlook: smtp-mail.outlook.com, port 587"
+        echo "• Yahoo: smtp.mail.yahoo.com, port 587"
+        echo ""
+        
+        SMTP_SERVER=$(get_input "📬 SMTP server (e.g., smtp.gmail.com)" "smtp.gmail.com")
+        SMTP_PORT=$(get_input "🔌 SMTP port (587 for most providers)" "587")
+        echo ""
+        
+        echo "🔐 EMAIL CREDENTIALS:"
+        echo "   ⚠️  For Gmail, you'll need an 'App Password', not your regular password!"
+        echo "   Go to: Google Account > Security > App Passwords"
+        echo ""
+        SMTP_USERNAME=$(get_input "📧 Your email address" "")
+        SMTP_PASSWORD=$(get_input "🔑 Email password (or App Password for Gmail)" "" "true")
+        echo ""
+        
+        NOTIFICATION_FROM_EMAIL=$(get_input "📤 From email address (usually same as username)" "$SMTP_USERNAME")
+        NOTIFICATION_TO_EMAIL=$(get_input "📥 Alert destination email (where to send alerts)" "$SMTP_USERNAME")
         SMTP_USE_TLS="true"
+        
+        echo ""
+        echo "✅ Email notifications configured!"
+        echo "   You'll receive alerts at: $NOTIFICATION_TO_EMAIL"
+        echo ""
+        
     else
         SMTP_SERVER=""
         SMTP_PORT="587"
@@ -250,12 +421,20 @@ if [ ! -f ".env" ]; then
         NOTIFICATION_FROM_EMAIL=""
         NOTIFICATION_TO_EMAIL=""
         SMTP_USE_TLS="true"
-        log "Email notifications can be configured later with: python scripts/setup-notifications.py"
+        
+        echo "⏭️  Email notifications skipped."
+        echo "   You can configure this later by running:"
+        echo "   python scripts/setup-notifications.py"
+        echo ""
     fi
-    echo ""
     
     # Create .env file with user input
-    log "Creating .env file with your configuration..."
+    echo "=========================================="
+    echo "💾 SAVING YOUR CONFIGURATION..."
+    echo "=========================================="
+    echo ""
+    echo "Creating configuration file with all your settings..."
+    
     sudo -u wix-printer bash -c "cat > .env << EOF
 # Database
 DATABASE_URL=sqlite:///data/wix_printer.db
@@ -299,15 +478,38 @@ HEALTH_CHECK_ENDPOINT_ENABLED=true
 METRICS_RETENTION_DAYS=30
 EOF"
     
-    log "✅ Configuration file created successfully!"
+    echo "✅ Configuration file saved successfully!"
     echo ""
-    echo "📋 CONFIGURATION SUMMARY:"
-    echo "----------------------------------------"
-    echo "Wix Site ID: $WIX_SITE_ID"
-    echo "Printer: $PRINTER_TYPE ($PRINTER_INTERFACE) at $PRINTER_DEVICE_PATH"
-    echo "Service: $SERVICE_HOST:$SERVICE_PORT"
-    echo "Self-Healing: Enabled with Epic 2 features"
-    echo "Email Notifications: $([ ! -z "$SMTP_SERVER" ] && echo "Configured" || echo "Not configured")"
+    echo "=========================================="
+    echo "📋 FINAL CONFIGURATION SUMMARY"
+    echo "=========================================="
+    echo ""
+    echo "🎯 WIX CONNECTION:"
+    echo "   Site ID: $WIX_SITE_ID"
+    echo "   API URL: $WIX_API_BASE_URL"
+    echo "   Status: $([ "$WIX_API_KEY" = "test" ] && echo "⚠️  Test Mode" || echo "✅ Production Ready")"
+    echo ""
+    echo "🖨️  PRINTER SETUP:"
+    echo "   Type: $PRINTER_TYPE"
+    echo "   Connection: $PRINTER_INTERFACE"
+    echo "   Address: $PRINTER_DEVICE_PATH"
+    echo ""
+    echo "⚙️  SERVICE SETTINGS:"
+    echo "   Host: $SERVICE_HOST"
+    echo "   Port: $SERVICE_PORT"
+    echo "   Log Level: $LOG_LEVEL"
+    echo ""
+    echo "🏥 EPIC 2 SELF-HEALING:"
+    echo "   Health Checks: Every $HEALTH_CHECK_INTERVAL seconds"
+    echo "   Max Retries: $RETRY_MAX_ATTEMPTS attempts"
+    echo "   Circuit Breaker: Activates after $CIRCUIT_BREAKER_FAILURE_THRESHOLD failures"
+    echo ""
+    echo "📧 EMAIL ALERTS:"
+    echo "   Status: $([ ! -z "$SMTP_SERVER" ] && echo "✅ Configured ($NOTIFICATION_TO_EMAIL)" || echo "⏭️  Skipped (can configure later)")"
+    echo ""
+    echo "🎉 Your Wix Restaurant Printer Service is now configured!"
+    echo ""
+    read -p "Press ENTER to continue with installation..."
     echo ""
     
 else
