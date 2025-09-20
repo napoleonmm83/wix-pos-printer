@@ -113,7 +113,7 @@ log "💡 TIP: Use '$0 --help' for all available options"
 # Phase 1: System Update
 log "📦 Phase 1: Updating system packages..."
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y git python3-pip python3-venv sqlite3 curl cups cups-client usbutils netcat-openbsd
+sudo apt install -y git python3-pip python3-venv sqlite3 curl cups cups-client usbutils netcat-openbsd libusb-1.0-0-dev
 
 # Verify Python version
 PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)

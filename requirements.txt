@@ -4,5 +4,6 @@ pytest
 httpx
 requests>=2.31.0
 python-dotenv
+pyusb
 python-escpos>=3.1
 psutil>=5.9.0
