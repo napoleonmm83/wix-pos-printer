@@ -4,7 +4,8 @@ Handles automatic processing of pending print jobs and status updates.
 """
 import asyncio
 import logging
-from typing import List, Optional
+import json
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import threading
 import time
