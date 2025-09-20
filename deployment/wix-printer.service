@@ -1,13 +1,18 @@
 [Unit]
-Description=Wix Printer Service
+Description=Wix Printer Service (FastAPI)
 After=network.target
+Wants=network-online.target
 
 [Service]
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/wix-pos-order
-ExecStart=/home/pi/wix-pos-order/venv/bin/uvicorn wix_printer_service.api.main:app --host 0.0.0.0 --port 8000
+Type=simple
+User=wix-printer
+Group=wix-printer
+WorkingDirectory=/opt/wix-printer-service
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/wix-printer-service/venv/bin/uvicorn wix_printer_service.api.main:app --host 0.0.0.0 --port 8000 --log-level info
 Restart=always
+RestartSec=3
+TimeoutStartSec=30
 
 [Install]
 WantedBy=multi-user.target
