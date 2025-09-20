@@ -80,6 +80,26 @@ class Database:
                     )
                 """)
                 
+                # Create health_metrics table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS health_metrics (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        metric_name TEXT NOT NULL,
+                        value REAL NOT NULL,
+                        tags TEXT
+                    )
+                """)
+                
+                # Create circuit_breaker_failures table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS circuit_breaker_failures (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        breaker_name TEXT NOT NULL,
+                        timestamp TEXT NOT NULL
+                    )
+                """)
+                
                 # Create indexes for better performance
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_wix_id ON orders(wix_order_id)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")

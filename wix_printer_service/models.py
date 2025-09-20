@@ -100,9 +100,12 @@ class Order:
             except (ValueError, TypeError):
                 price_value = 0.0
 
+            # Get item name from new eCom structure (productName.original) with fallback to legacy 'name'
+            item_name = item_data.get('productName', {}).get('original') or item_data.get('name', '')
+
             item = OrderItem(
                 id=item_data.get('id', ''),
-                name=item_data.get('name', ''),
+                name=item_name,
                 quantity=int(item_data.get('quantity', 1)),
                 price=price_value,
                 sku=item_data.get('sku'),
