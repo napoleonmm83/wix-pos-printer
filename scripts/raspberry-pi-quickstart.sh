@@ -181,34 +181,84 @@ log "⚙️ Phase 6: Interactive configuration setup..."
 
 # Function to detect printer
 detect_printer() {
-    log "🖨️ Detecting connected printers..."
+    echo "🔍 Scanning for connected printers..."
+    echo ""
     
-    # Check for Epson printers via USB
-    EPSON_USB=$(lsusb | grep -i epson | head -1)
+    # Check for any USB printers first (most common)
+    echo "   Checking USB connections..."
+    USB_DEVICES_FOUND=false
+    for device in /dev/usb/lp* /dev/lp*; do
+        if [ -e "$device" ]; then
+            echo "   ✅ Found USB printer device: $device"
+            USB_DEVICES_FOUND=true
+            # Check if it's accessible
+            if [ -w "$device" ] 2>/dev/null; then
+                echo "   ✅ Device is writable (ready to use)"
+            else
+                echo "   ⚠️  Device found but may need permissions"
+            fi
+        fi
+    done
+    
+    if [ "$USB_DEVICES_FOUND" = true ]; then
+        echo "usb:$(ls /dev/usb/lp* /dev/lp* 2>/dev/null | head -1)"
+        return 0
+    fi
+    
+    # Check for Epson printers specifically via lsusb
+    echo "   Checking for Epson printers via USB..."
+    EPSON_USB=$(lsusb 2>/dev/null | grep -i epson)
     if [ ! -z "$EPSON_USB" ]; then
-        log "✅ Found Epson printer via USB: $EPSON_USB"
+        echo "   ✅ Found Epson printer via lsusb:"
+        echo "      $EPSON_USB"
+        echo "   ⚠️  Device file may not be created yet"
         echo "usb"
         return 0
     fi
     
-    # Check for network printers
-    NETWORK_PRINTER=$(lpstat -p 2>/dev/null | grep -i epson | head -1)
-    if [ ! -z "$NETWORK_PRINTER" ]; then
-        log "✅ Found Epson printer via network: $NETWORK_PRINTER"
-        echo "network"
+    # Check for any thermal printer brands
+    echo "   Checking for thermal printers..."
+    THERMAL_PRINTERS=$(lsusb 2>/dev/null | grep -iE "(epson|star|citizen|bixolon|custom|pos)")
+    if [ ! -z "$THERMAL_PRINTERS" ]; then
+        echo "   ✅ Found thermal printer:"
+        echo "      $THERMAL_PRINTERS"
+        echo "usb"
         return 0
     fi
     
-    # Check USB device paths
-    for device in /dev/usb/lp* /dev/lp*; do
-        if [ -e "$device" ]; then
-            log "✅ Found printer device: $device"
-            echo "usb:$device"
+    # Check for network printers via CUPS
+    echo "   Checking network printers..."
+    if command -v lpstat >/dev/null 2>&1; then
+        NETWORK_PRINTER=$(lpstat -p 2>/dev/null | grep -i printer)
+        if [ ! -z "$NETWORK_PRINTER" ]; then
+            echo "   ✅ Found network printer via CUPS:"
+            echo "      $NETWORK_PRINTER"
+            echo "network"
             return 0
+        fi
+    fi
+    
+    # Check common network printer ports
+    echo "   Scanning common printer IP addresses..."
+    for ip in 192.168.1.{100..110} 192.168.0.{100..110}; do
+        if ping -c 1 -W 1 "$ip" >/dev/null 2>&1; then
+            # Check if it responds on common printer ports
+            if nc -z -w1 "$ip" 9100 2>/dev/null || nc -z -w1 "$ip" 515 2>/dev/null; then
+                echo "   ✅ Found potential network printer at $ip"
+                echo "network"
+                return 0
+            fi
         fi
     done
     
-    warn "No Epson printer detected. Please connect your printer and try again."
+    echo "   ❌ No printers detected automatically"
+    echo ""
+    echo "   This could mean:"
+    echo "   • Printer is not connected or powered on"
+    echo "   • Printer needs manual configuration"
+    echo "   • Printer is connected via network with custom IP"
+    echo "   • USB permissions need to be set"
+    echo ""
     echo "none"
     return 1
 }
@@ -343,11 +393,15 @@ if [ ! -f ".env" ]; then
     echo "🖨️ STEP 2: PRINTER DETECTION & SETUP"
     echo "=========================================="
     echo ""
-    echo "Now let's find and configure your Epson TM-m30III printer..."
+    echo "Now let's find and configure your printer..."
+    echo "This works with Epson TM-m30III and most other thermal printers."
     echo ""
-    echo "🔍 SCANNING FOR PRINTERS..."
+    
     PRINTER_DETECTION=$(detect_printer)
     echo ""
+    
+    # Initialize default paper width
+    PAPER_WIDTH="80"
     
     if [ "$PRINTER_DETECTION" = "none" ]; then
         echo "❌ NO PRINTER DETECTED AUTOMATICALLY"
@@ -628,42 +682,66 @@ if [ ! -f ".env" ]; then
         # Create a simple test receipt
         if [ "$PRINTER_INTERFACE" = "usb" ]; then
             # Test print for USB printer
+            echo "Testing USB printer at $PRINTER_DEVICE_PATH..."
+            
+            # Check if device exists
             if [ -e "$PRINTER_DEVICE_PATH" ]; then
-                echo "Testing USB printer at $PRINTER_DEVICE_PATH..."
-                {
-                    echo ""
-                    echo "================================"
-                    echo "    WIX PRINTER SERVICE TEST"
-                    echo "================================"
-                    echo ""
-                    echo "✅ Printer Type: $PRINTER_TYPE"
-                    echo "✅ Connection: $PRINTER_INTERFACE"
-                    echo "✅ Device: $PRINTER_DEVICE_PATH"
-                    echo "✅ Paper Width: ${PAPER_WIDTH}mm"
-                    echo ""
-                    echo "Date: $(date)"
-                    echo ""
-                    echo "Epic 2 Self-Healing Features:"
-                    echo "• Intelligent Retry System"
-                    echo "• Health Monitoring"
-                    echo "• Circuit Breaker Protection"
-                    echo ""
-                    echo "🎉 TEST SUCCESSFUL!"
-                    echo "Your printer is ready for"
-                    echo "restaurant operations!"
-                    echo ""
-                    echo "================================"
-                    echo ""
-                    echo ""
-                    echo ""
-                } > "$PRINTER_DEVICE_PATH" 2>/dev/null && echo "   ✅ Test receipt printed successfully!" || echo "   ⚠️  Test print failed - check printer connection"
+                # Try to write to the device
+                TEST_CONTENT="
+
+================================
+    WIX PRINTER SERVICE TEST
+================================
+
+✅ Printer Type: $PRINTER_TYPE
+✅ Connection: $PRINTER_INTERFACE  
+✅ Device: $PRINTER_DEVICE_PATH
+✅ Paper Width: ${PAPER_WIDTH}mm
+
+Date: $(date)
+
+Epic 2 Self-Healing Features:
+• Intelligent Retry System
+• Health Monitoring
+• Circuit Breaker Protection
+
+🎉 TEST SUCCESSFUL!
+Your printer is ready for
+restaurant operations!
+
+================================
+
+
+
+"
+                
+                # Try to print
+                if echo "$TEST_CONTENT" > "$PRINTER_DEVICE_PATH" 2>/dev/null; then
+                    echo "   ✅ Test receipt printed successfully!"
+                else
+                    echo "   ⚠️  Test print failed - device may not be ready"
+                    echo "   💡 Try: sudo chmod 666 $PRINTER_DEVICE_PATH"
+                    echo "   💡 Or check: ls -la $PRINTER_DEVICE_PATH"
+                fi
             else
                 echo "   ⚠️  Printer device not found: $PRINTER_DEVICE_PATH"
+                echo "   💡 Check if printer is connected and powered on"
+                echo "   💡 Try: ls -la /dev/usb/lp* /dev/lp*"
                 echo "   You can test printing after the service is running"
             fi
         elif [ "$PRINTER_INTERFACE" = "network" ]; then
-            echo "   📡 Network printer test will be available after service startup"
-            echo "   You can test via: curl http://localhost:8000/test-print"
+            echo "   📡 Testing network printer connectivity..."
+            
+            # Try to ping the printer
+            if ping -c 1 -W 2 "$PRINTER_DEVICE_PATH" >/dev/null 2>&1; then
+                echo "   ✅ Network printer is reachable at $PRINTER_DEVICE_PATH"
+                echo "   📝 Full test will be available after service startup"
+                echo "   💡 Test via: curl http://localhost:8000/test-print"
+            else
+                echo "   ⚠️  Cannot reach printer at $PRINTER_DEVICE_PATH"
+                echo "   💡 Check printer IP address and network connection"
+                echo "   💡 Try: ping $PRINTER_DEVICE_PATH"
+            fi
         fi
         echo ""
     else
