@@ -264,7 +264,7 @@ class PrinterClient:
             logger.error(f"ESC/POS error during receipt printing: {e}")
             return False
         except Exception as e:
-            logger.error(f"Unexpected error during receipt printing: {e}")
+            logger.error("Unexpected error during receipt printing", exc_info=True)
             return False
     
     def disconnect(self):
