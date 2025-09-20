@@ -804,6 +804,13 @@ class PrintManager:
             job: PrintJob to process
         """
         try:
+            # Self-healing: Ensure printer is ready before processing this specific job
+            if not self._ensure_printer_ready():
+                logger.warning(f"Printer not ready for job {job.id}, deferring.")
+                # The job remains 'pending' and will be picked up in the next cycle.
+                # We don't mark it as failed immediately, giving the connection a chance to recover.
+                return
+
             logger.info(f"Processing print job {job.id} (type: {job.job_type})")
             
             # Update job status to printing
