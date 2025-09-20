@@ -143,6 +143,12 @@ UDEV_RULE_CONTENT='SUBSYSTEM=="usb", ATTR{idVendor}=="04b8", ATTR{idProduct}=="0
 log "Creating udev rule for USB printer access at $UDEV_RULE_FILE"
 echo "$UDEV_RULE_CONTENT" | sudo tee $UDEV_RULE_FILE > /dev/null
 
+log "Blacklisting conflicting 'usblp' kernel module..."
+BLACKLIST_FILE="/etc/modprobe.d/blacklist-usblp.conf"
+if [ ! -f "$BLACKLIST_FILE" ]; then
+    echo "blacklist usblp" | sudo tee "$BLACKLIST_FILE"
+fi
+
 log "Reloading udev rules..."
 sudo udevadm control --reload-rules
 sudo udevadm trigger
