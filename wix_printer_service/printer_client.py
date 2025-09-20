@@ -45,21 +45,51 @@ class PrinterClient:
     
     def __init__(self):
         """Initialize the printer client with configuration from environment."""
-        self.connection_type = PrinterConnectionType(
-            os.getenv('PRINTER_CONNECTION_TYPE', 'dummy').lower()
-        )
+        # Determine connection type (support both new and wizard variable names)
+        conn_name = (
+            os.getenv('PRINTER_CONNECTION_TYPE')
+            or os.getenv('PRINTER_INTERFACE')
+            or os.getenv('PRINTER_TYPE')
+            or 'dummy'
+        ).lower()
+        try:
+            self.connection_type = PrinterConnectionType(conn_name)
+        except ValueError:
+            self.connection_type = PrinterConnectionType.DUMMY
+            logger.warning(f"Unknown printer connection type '{conn_name}', defaulting to dummy")
+
         self.printer = None
         self._is_connected = False
-        
-        # USB configuration
-        self.usb_vendor_id = int(os.getenv('PRINTER_USB_VENDOR_ID', '0x04b8'), 16)  # Epson
-        self.usb_product_id = int(os.getenv('PRINTER_USB_PRODUCT_ID', '0x0202'), 16)  # TM-m30III
-        
-        # Network configuration
-        self.network_host = os.getenv('PRINTER_NETWORK_HOST', '192.168.1.100')
-        self.network_port = int(os.getenv('PRINTER_NETWORK_PORT', '9100'))
-        
-        logger.info(f"Printer client initialized for {self.connection_type.value} connection")
+
+        # USB configuration (robust parsing for hex or decimal values)
+        def _parse_usb(value: str, default_hex: str) -> int:
+            env_val = os.getenv(value)
+            if env_val:
+                try:
+                    return int(env_val, 0)  # auto-detect base (0x..., decimal)
+                except Exception:
+                    logger.warning(f"Invalid {value}='{env_val}', falling back to default {default_hex}")
+            return int(default_hex, 16)
+
+        self.usb_vendor_id = _parse_usb('PRINTER_USB_VENDOR_ID', '0x04b8')  # Epson
+        self.usb_product_id = _parse_usb('PRINTER_USB_PRODUCT_ID', '0x0202')  # TM-m30III
+
+        # Network configuration (support wizard names)
+        self.network_host = os.getenv('PRINTER_NETWORK_HOST') or os.getenv('PRINTER_IP', '192.168.1.100')
+        self.network_port = int(
+            os.getenv('PRINTER_NETWORK_PORT') or os.getenv('PRINTER_PORT', '9100')
+        )
+
+        logger.info(
+            "Printer client initialized",
+            extra={
+                'connection_type': self.connection_type.value,
+                'network_host': self.network_host,
+                'network_port': self.network_port,
+                'usb_vendor_id': hex(self.usb_vendor_id),
+                'usb_product_id': hex(self.usb_product_id),
+            }
+        )
     
     def connect(self) -> bool:
         """

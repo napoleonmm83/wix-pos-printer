@@ -157,6 +157,42 @@ def health_check():
     return {"status": "ok"}
 
 
+@app.get("/test-print", tags=["Printer"], response_model=dict)
+def test_print(printer_client: PrinterClient = Depends(get_printer_client)):
+    """
+    Trigger a simple test receipt through the configured printer.
+    Uses PrinterClient and returns a JSON status.
+    """
+    try:
+        if not printer_client:
+            raise HTTPException(status_code=500, detail="Printer client unavailable")
+
+        # Ensure connection
+        if not printer_client.is_connected:
+            if not printer_client.connect():
+                raise HTTPException(status_code=503, detail="Printer not connected")
+
+        # Print a small test receipt
+        ok = printer_client.print_receipt(
+            content=(
+                "WIX PRINTER SERVICE TEST\n\n"
+                "✅ API reachable\n"
+                "✅ Self-healing active\n\n"
+            ),
+            title="TEST PRINT"
+        )
+
+        if ok:
+            return {"status": "success", "message": "Test receipt sent"}
+        else:
+            raise HTTPException(status_code=500, detail="Printer reported failure")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Test print error: {e}")
+        raise HTTPException(status_code=500, detail=f"Test print failed: {e}")
+
 @app.post("/webhook/orders", tags=["Webhooks"])
 async def webhook_orders(
     request: Request,
