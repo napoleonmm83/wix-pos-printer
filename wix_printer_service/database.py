@@ -88,7 +88,7 @@ class Database:
                         metric_name TEXT NOT NULL,
                         value REAL NOT NULL,
                         tags TEXT,
-                        resource_type TEXT
+                        status TEXT
                     )
                 """)
                 
