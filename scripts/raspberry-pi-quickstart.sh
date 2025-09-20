@@ -377,7 +377,11 @@ if [ ! -f ".env" ]; then
                     break
                     ;;
                 2)
-                    PRINTER_TYPE=$(get_input "   Enter printer type" "thermal")
+                    echo -n "   Enter printer type (default: thermal): "
+                    read PRINTER_TYPE
+                    if [ -z "$PRINTER_TYPE" ]; then
+                        PRINTER_TYPE="thermal"
+                    fi
                     break
                     ;;
                 *)
@@ -419,7 +423,11 @@ if [ ! -f ".env" ]; then
             echo "3️⃣ NETWORK PRINTER IP:"
             echo "   Find your printer's IP address on the printer display"
             echo "   or in your router's device list"
-            PRINTER_DEVICE_PATH=$(get_input "   Enter printer IP address" "192.168.1.100")
+            echo -n "   Enter printer IP address (default: 192.168.1.100): "
+            read PRINTER_DEVICE_PATH
+            if [ -z "$PRINTER_DEVICE_PATH" ]; then
+                PRINTER_DEVICE_PATH="192.168.1.100"
+            fi
         else
             echo "3️⃣ USB DEVICE PATH:"
             echo "   Which USB port is your printer connected to?"
@@ -447,7 +455,11 @@ if [ ! -f ".env" ]; then
                         break
                         ;;
                     4)
-                        PRINTER_DEVICE_PATH=$(get_input "   Enter custom USB device path" "/dev/usb/lp0")
+                        echo -n "   Enter custom USB device path (default: /dev/usb/lp0): "
+                        read PRINTER_DEVICE_PATH
+                        if [ -z "$PRINTER_DEVICE_PATH" ]; then
+                            PRINTER_DEVICE_PATH="/dev/usb/lp0"
+                        fi
                         break
                         ;;
                     *)
@@ -487,7 +499,11 @@ if [ ! -f ".env" ]; then
         echo ""
         echo "📝 We need the printer's IP address to connect:"
         echo "   Check your printer display or router settings"
-        PRINTER_DEVICE_PATH=$(get_input "   Enter printer IP address" "192.168.1.100")
+        echo -n "   Enter printer IP address (default: 192.168.1.100): "
+        read PRINTER_DEVICE_PATH
+        if [ -z "$PRINTER_DEVICE_PATH" ]; then
+            PRINTER_DEVICE_PATH="192.168.1.100"
+        fi
         echo "✅ Network printer configured!"
     fi
     echo ""
@@ -519,10 +535,19 @@ if [ ! -f ".env" ]; then
     echo "   • Host '0.0.0.0' = Accept connections from any device (recommended)"
     echo "   • Port '8000' = Standard web service port"
     echo ""
-    SERVICE_HOST=$(get_input "   👉 Service host (leave default for normal use)" "0.0.0.0")
+    echo -n "   👉 Service host (default: 0.0.0.0): "
+    read SERVICE_HOST
+    if [ -z "$SERVICE_HOST" ]; then
+        SERVICE_HOST="0.0.0.0"
+    fi
     echo "   ✅ Host configured: $SERVICE_HOST"
     echo ""
-    SERVICE_PORT=$(get_input "   👉 Service port (8000 is standard)" "8000")
+    
+    echo -n "   👉 Service port (default: 8000): "
+    read SERVICE_PORT
+    if [ -z "$SERVICE_PORT" ]; then
+        SERVICE_PORT="8000"
+    fi
     echo "   ✅ Port configured: $SERVICE_PORT"
     echo ""
     
@@ -582,12 +607,20 @@ if [ ! -f ".env" ]; then
     echo "🔄 INTELLIGENT RETRY SETTINGS:"
     echo ""
     echo "   ❓ How often should we check if everything is working properly?"
-    HEALTH_CHECK_INTERVAL=$(get_input "   👉 Health check interval in seconds (30 = every 30 seconds)" "30")
+    echo -n "   👉 Health check interval in seconds (default: 30): "
+    read HEALTH_CHECK_INTERVAL
+    if [ -z "$HEALTH_CHECK_INTERVAL" ]; then
+        HEALTH_CHECK_INTERVAL="30"
+    fi
     echo "   ✅ Health checks every $HEALTH_CHECK_INTERVAL seconds"
     echo ""
     
     echo "   ❓ How many times should we retry if a print job fails?"
-    RETRY_MAX_ATTEMPTS=$(get_input "   👉 Maximum retry attempts (5 = try 5 times before giving up)" "5")
+    echo -n "   👉 Maximum retry attempts (default: 5): "
+    read RETRY_MAX_ATTEMPTS
+    if [ -z "$RETRY_MAX_ATTEMPTS" ]; then
+        RETRY_MAX_ATTEMPTS="5"
+    fi
     echo "   ✅ Will retry failed jobs $RETRY_MAX_ATTEMPTS times"
     echo ""
     
@@ -595,12 +628,20 @@ if [ ! -f ".env" ]; then
     echo "   This protects your system from cascading failures"
     echo ""
     echo "   ❓ How many failures before we temporarily stop trying?"
-    CIRCUIT_BREAKER_FAILURE_THRESHOLD=$(get_input "   👉 Failure threshold (3 = stop after 3 failures)" "3")
+    echo -n "   👉 Failure threshold (default: 3): "
+    read CIRCUIT_BREAKER_FAILURE_THRESHOLD
+    if [ -z "$CIRCUIT_BREAKER_FAILURE_THRESHOLD" ]; then
+        CIRCUIT_BREAKER_FAILURE_THRESHOLD="3"
+    fi
     echo "   ✅ Circuit breaker activates after $CIRCUIT_BREAKER_FAILURE_THRESHOLD failures"
     echo ""
     
     echo "   ❓ How long should we wait before trying again?"
-    CIRCUIT_BREAKER_TIMEOUT=$(get_input "   👉 Wait time in seconds (60 = wait 1 minute)" "60")
+    echo -n "   👉 Wait time in seconds (default: 60): "
+    read CIRCUIT_BREAKER_TIMEOUT
+    if [ -z "$CIRCUIT_BREAKER_TIMEOUT" ]; then
+        CIRCUIT_BREAKER_TIMEOUT="60"
+    fi
     echo "   ✅ Will wait $CIRCUIT_BREAKER_TIMEOUT seconds before retrying"
     echo ""
     
@@ -639,10 +680,19 @@ if [ ! -f ".env" ]; then
         echo ""
         
         echo "📬 EMAIL SERVER SETTINGS:"
-        SMTP_SERVER=$(get_input "   👉 SMTP server (e.g., smtp.gmail.com)" "smtp.gmail.com")
+        echo -n "   👉 SMTP server (default: smtp.gmail.com): "
+        read SMTP_SERVER
+        if [ -z "$SMTP_SERVER" ]; then
+            SMTP_SERVER="smtp.gmail.com"
+        fi
         echo "   ✅ Using server: $SMTP_SERVER"
         echo ""
-        SMTP_PORT=$(get_input "   👉 SMTP port (587 for most providers)" "587")
+        
+        echo -n "   👉 SMTP port (default: 587): "
+        read SMTP_PORT
+        if [ -z "$SMTP_PORT" ]; then
+            SMTP_PORT="587"
+        fi
         echo "   ✅ Using port: $SMTP_PORT"
         echo ""
         
@@ -653,18 +703,31 @@ if [ ! -f ".env" ]; then
         echo "      2. Generate a new app password"
         echo "      3. Use that password here (not your regular Gmail password)"
         echo ""
-        SMTP_USERNAME=$(get_input "   👉 Your email address" "")
+        echo -n "   👉 Your email address: "
+        read SMTP_USERNAME
         echo "   ✅ Email account: $SMTP_USERNAME"
         echo ""
-        SMTP_PASSWORD=$(get_input "   👉 Email password (App Password for Gmail)" "" "true")
+        
+        echo -n "   👉 Email password (App Password for Gmail): "
+        read -s SMTP_PASSWORD
+        echo ""
         echo "   ✅ Password configured (hidden for security)"
         echo ""
         
         echo "📧 NOTIFICATION SETTINGS:"
-        NOTIFICATION_FROM_EMAIL=$(get_input "   👉 From email (usually same as above)" "$SMTP_USERNAME")
+        echo -n "   👉 From email (default: $SMTP_USERNAME): "
+        read NOTIFICATION_FROM_EMAIL
+        if [ -z "$NOTIFICATION_FROM_EMAIL" ]; then
+            NOTIFICATION_FROM_EMAIL="$SMTP_USERNAME"
+        fi
         echo "   ✅ Alerts will be sent from: $NOTIFICATION_FROM_EMAIL"
         echo ""
-        NOTIFICATION_TO_EMAIL=$(get_input "   👉 Where to send alerts (your manager email)" "$SMTP_USERNAME")
+        
+        echo -n "   👉 Where to send alerts (default: $SMTP_USERNAME): "
+        read NOTIFICATION_TO_EMAIL
+        if [ -z "$NOTIFICATION_TO_EMAIL" ]; then
+            NOTIFICATION_TO_EMAIL="$SMTP_USERNAME"
+        fi
         echo "   ✅ Alerts will be sent to: $NOTIFICATION_TO_EMAIL"
         SMTP_USE_TLS="true"
         
