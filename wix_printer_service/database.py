@@ -87,7 +87,8 @@ class Database:
                         timestamp TEXT NOT NULL,
                         metric_name TEXT NOT NULL,
                         value REAL NOT NULL,
-                        tags TEXT
+                        tags TEXT,
+                        resource_type TEXT
                     )
                 """)
                 

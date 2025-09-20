@@ -234,8 +234,6 @@ class PrinterClient:
             return False
         
         try:
-            # Initialize printer
-            self.printer.init()
             
             # Print title if provided
             if title:
