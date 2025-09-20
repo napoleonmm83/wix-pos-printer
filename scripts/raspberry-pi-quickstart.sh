@@ -98,7 +98,6 @@ source venv/bin/activate
 python -c '
 from wix_printer_service.database import Database
 db = Database(\"data/wix_printer.db\")
-db.initialize()
 print(\"Database initialized successfully!\")
 '
 "
