@@ -55,10 +55,14 @@ class WixClient:
             bool: True if connection is successful, False otherwise
         """
         try:
-            # Test with a simple API call to verify credentials
-            response = self.session.get(
-                f'{self.base_url}/stores/v1/orders',
-                params={'limit': 1},
+            # Test with a small search (recommended for eCommerce Orders API)
+            response = self.session.post(
+                f'{self.base_url}/wix-ecom/v1/orders/search',
+                json={
+                    'cursorPaging': {'limit': 1},
+                    'filter': { 'status': { '$ne': 'INITIALIZED' } },
+                    'sort': [{ 'fieldName': 'createdDate', 'order': 'DESC' }]
+                },
                 timeout=10
             )
             
@@ -73,37 +77,45 @@ class WixClient:
             logger.error(f"Wix API connection test failed with exception: {e}")
             return False
     
-    def get_orders(self, limit: int = 50, offset: int = 0, status: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def search_orders(self, limit: int = 50, cursor: Optional[str] = None, filter: Optional[Dict[str, Any]] = None, sort: Optional[list] = None) -> Dict[str, Any]:
         """
-        Retrieve orders from Wix API.
-        
-        Args:
-            limit: Maximum number of orders to retrieve
-            offset: Number of orders to skip
-            
-        Returns:
-            Dict containing orders data or None if failed
+        Search orders via eCommerce Orders API.
+        Uses POST /wix-ecom/v1/orders/search with filter/sort/cursorPaging.
         """
         try:
-            params = {'limit': limit, 'offset': offset}
-            if status:
-                params['status'] = status
-            response = self.session.get(
-                f'{self.base_url}/stores/v1/orders',
-                params=params,
+            body: Dict[str, Any] = {
+                'cursorPaging': {'limit': limit}
+            }
+            if cursor:
+                body['cursorPaging']['cursor'] = cursor
+            if filter:
+                body['filter'] = filter
+            if sort:
+                body['sort'] = sort
+            else:
+                body['sort'] = [{ 'fieldName': 'createdDate', 'order': 'DESC' }]
+
+            response = self.session.post(
+                f'{self.base_url}/wix-ecom/v1/orders/search',
+                json=body,
                 timeout=30
             )
-            
             if response.status_code == 200:
-                logger.info(f"Successfully retrieved {limit} orders from Wix API")
-                return response.json()
-            else:
-                logger.error(f"Failed to retrieve orders: {response.status_code} - {response.text}")
-                raise WixAPIError(f"API request failed: {response.status_code}")
-                
+                return response.json() or {}
+            logger.error(f"Search orders failed: {response.status_code} - {response.text}")
+            raise WixAPIError(f"API request failed: {response.status_code}")
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error retrieving orders from Wix API: {e}")
+            logger.error(f"Error searching orders: {e}")
             raise WixAPIError(f"Network error: {str(e)}")
+
+    def get_orders_by_status(self, status: Optional[str], limit: int = 50, cursor: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Helper to search orders filtered by status (if provided).
+        """
+        filt = None
+        if status:
+            filt = { 'status': { '$eq': status.upper() } }
+        return self.search_orders(limit=limit, cursor=cursor, filter=filt)
     
     def validate_webhook_signature(self, payload: bytes, signature: str, webhook_secret: str) -> bool:
         """

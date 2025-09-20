@@ -90,11 +90,21 @@ class Order:
         # Extract order items
         items = []
         for item_data in wix_data.get('lineItems', []):
+            # Try various price shapes: price.amount (ecom), priceData.total.amount, or 0
+            price_value = 0.0
+            try:
+                if isinstance(item_data.get('price'), dict):
+                    price_value = float(item_data['price'].get('amount', 0) or 0)
+                elif isinstance(item_data.get('priceData'), dict):
+                    price_value = float(item_data['priceData'].get('total', {}).get('amount', 0) or 0)
+            except (ValueError, TypeError):
+                price_value = 0.0
+
             item = OrderItem(
                 id=item_data.get('id', ''),
                 name=item_data.get('name', ''),
-                quantity=item_data.get('quantity', 1),
-                price=float(item_data.get('price', {}).get('amount', 0)),
+                quantity=int(item_data.get('quantity', 1)),
+                price=price_value,
                 sku=item_data.get('sku'),
                 variant=item_data.get('variant'),
                 notes=item_data.get('notes')
@@ -122,23 +132,51 @@ class Order:
             delivery_instructions=shipping_info.get('deliveryInstructions')
         )
         
-        # Parse order date
+        # Parse order date (support eCommerce createdDate and legacy dateCreated)
         order_date = datetime.now()
-        if 'dateCreated' in wix_data:
+        date_str = wix_data.get('createdDate') or wix_data.get('dateCreated')
+        if date_str:
             try:
-                order_date = datetime.fromisoformat(wix_data['dateCreated'].replace('Z', '+00:00'))
+                order_date = datetime.fromisoformat(str(date_str).replace('Z', '+00:00'))
             except (ValueError, AttributeError):
                 pass
         
+        # Determine status with robust mapping from eCommerce statuses
+        raw_status = str(wix_data.get('status', 'PENDING') or 'PENDING').upper()
+        mapped_status = OrderStatus.PENDING
+        if 'CANCEL' in raw_status:
+            mapped_status = OrderStatus.CANCELLED
+        elif raw_status in ('FULFILLED', 'COMPLETED'):  # treat fulfilled/completed as completed
+            mapped_status = OrderStatus.COMPLETED
+        elif raw_status in ('PROCESSING', 'APPROVED', 'PAID', 'PARTIALLY_FULFILLED', 'PARTIALLY_PAID'):
+            mapped_status = OrderStatus.PROCESSING
+        else:
+            mapped_status = OrderStatus.PENDING
+
+        # Total and currency from eCommerce priceSummary or legacy totals
+        total_amount = 0.0
+        currency = 'EUR'
+        try:
+            ps = wix_data.get('priceSummary') or {}
+            if isinstance(ps, dict) and 'total' in ps:
+                total_amount = float(ps.get('total', {}).get('amount', 0) or 0)
+                currency = ps.get('total', {}).get('currency', currency)
+            else:
+                totals = wix_data.get('totals', {})
+                total_amount = float(totals.get('total', {}).get('amount', 0) or 0)
+                currency = totals.get('total', {}).get('currency', currency)
+        except (ValueError, TypeError):
+            pass
+
         return cls(
             id=wix_data.get('id', ''),
             wix_order_id=wix_data.get('id', ''),
-            status=OrderStatus(wix_data.get('status', 'pending').lower()),
+            status=mapped_status,
             items=items,
             customer=customer,
             delivery=delivery,
-            total_amount=float(wix_data.get('totals', {}).get('total', {}).get('amount', 0)),
-            currency=wix_data.get('totals', {}).get('total', {}).get('currency', 'EUR'),
+            total_amount=total_amount,
+            currency=currency,
             order_date=order_date,
             raw_data=wix_data
         )

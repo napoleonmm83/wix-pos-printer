@@ -276,7 +276,6 @@ async def webhook_orders(
 def sync_orders(
     status: Optional[str] = "pending",
     limit: int = 50,
-    offset: int = 0,
     wix_client: WixClient = Depends(get_wix_client),
     order_service: OrderService = Depends(get_order_service)
 ):
@@ -288,7 +287,7 @@ def sync_orders(
         raise HTTPException(status_code=503, detail="Wix client not configured (set WIX_API_KEY and WIX_SITE_ID)")
 
     try:
-        data = wix_client.get_orders(limit=limit, offset=offset, status=status)
+        data = wix_client.get_orders_by_status(status=status, limit=limit)
         orders_list = []
         # Flexible parsing of API result
         if isinstance(data, dict):
