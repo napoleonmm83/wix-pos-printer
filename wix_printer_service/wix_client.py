@@ -108,13 +108,26 @@ class WixClient:
             logger.error(f"Error searching orders: {e}")
             raise WixAPIError(f"Network error: {str(e)}")
 
-    def get_orders_by_status(self, status: Optional[str], limit: int = 50, cursor: Optional[str] = None) -> Dict[str, Any]:
+    def get_orders_since(self, from_date: Optional[str], status: Optional[str], limit: int = 100, cursor: Optional[str] = None) -> Dict[str, Any]:
         """
-        Helper to search orders filtered by status (if provided).
+        Search orders with a start date and optional status filter.
         """
-        filt = None
+        from datetime import datetime, time
+
+        # Start with a base filter that can be expanded
+        filt = { 'status': { '$ne': 'INITIALIZED' } } # Default filter
+
+        if from_date:
+            try:
+                start_of_day = datetime.fromisoformat(from_date)
+                start_of_day = datetime.combine(start_of_day.date(), time.min)
+                filt['createdDate'] = { '$gte': start_of_day.isoformat() + "Z" }
+            except ValueError:
+                logger.warning(f"Invalid from_date format: {from_date}. Should be YYYY-MM-DD.")
+        
         if status:
-            filt = { 'status': { '$eq': status.upper() } }
+            filt['status'] = { '$eq': status.upper() }
+
         return self.search_orders(limit=limit, cursor=cursor, filter=filt)
     
     def validate_webhook_signature(self, payload: bytes, signature: str, webhook_secret: str) -> bool:
