@@ -1,0 +1,13 @@
+[Unit]
+Description=Wix Printer Service
+After=network.target
+
+[Service]
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/wix-pos-order
+ExecStart=/home/pi/wix-pos-order/venv/bin/uvicorn wix_printer_service.api.main:app --host 0.0.0.0 --port 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

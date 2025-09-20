@@ -1,0 +1,34 @@
+{
+  "recovery_monitoring": {
+    "enabled": true,
+    "dashboard_refresh_interval": "30s",
+    "history_retention_days": 30,
+    "alerts": {
+      "recovery_failure": {
+        "enabled": true,
+        "severity": "critical"
+      },
+      "queue_overflow": {
+        "enabled": true,
+        "threshold": 1000,
+        "severity": "critical"
+      },
+      "recovery_timeout": {
+        "enabled": true,
+        "threshold_minutes": 30,
+        "severity": "high"
+      },
+      "high_failure_rate": {
+        "enabled": true,
+        "threshold_percentage": 80,
+        "severity": "warning"
+      }
+    },
+    "performance_thresholds": {
+      "recovery_initiation_seconds": 5,
+      "batch_processing_rate": 10,
+      "memory_usage_mb": 500,
+      "max_recovery_duration_minutes": 15
+    }
+  }
+}

@@ -1,0 +1,3 @@
+# 7. Nächste Schritte
+**Aufforderung an den Architect:**
+> Dieses Product Requirements Document (PRD) beschreibt einen "headless" Dienst für einen Raspberry Pi zum Drucken von Wix-Bestellungen. Bitte überprüfen Sie es gründlich und erstellen Sie ein entsprechendes technisches Architektur-Dokument. Achten Sie besonders auf die nicht-funktionalen Anforderungen bezüglich Zuverlässigkeit, Überwachung und Selbstheilung sowie auf die spezifischen Hardware- (Raspberry Pi, Epson TM-m30III) und API- (Wix) Einschränkungen.

@@ -1,0 +1,15 @@
+[Unit]
+Description=Recovery Performance Monitor
+After=network.target
+Wants=wix-printer-service.service
+
+[Service]
+Type=simple
+ExecStart=E:\Git\wix-pos-order\monitoring/performance-monitor.py
+Restart=always
+RestartSec=30
+User=pi
+WorkingDirectory=E:\Git\wix-pos-order
+
+[Install]
+WantedBy=multi-user.target

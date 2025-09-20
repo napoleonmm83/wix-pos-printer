@@ -1,0 +1,28 @@
+{
+  "alerts": [
+    {
+      "name": "recovery_failure",
+      "condition": "recovery_session.status == 'failed'",
+      "severity": "critical",
+      "notification": "immediate",
+      "message": "Recovery session {session_id} failed: {error_message}",
+      "enabled": true
+    },
+    {
+      "name": "queue_overflow",
+      "condition": "offline_queue.size > 1000",
+      "severity": "critical",
+      "notification": "immediate",
+      "message": "Offline queue overflow: {queue_size} items, urgency: {urgency_level}",
+      "enabled": true
+    },
+    {
+      "name": "recovery_timeout",
+      "condition": "recovery_session.duration > 30_minutes",
+      "severity": "high",
+      "notification": "5_minutes",
+      "message": "Recovery session {session_id} running for {duration}, phase: {phase}",
+      "enabled": true
+    }
+  ]
+}

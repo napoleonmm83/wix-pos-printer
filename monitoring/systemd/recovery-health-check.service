@@ -1,0 +1,12 @@
+[Unit]
+Description=Recovery System Health Check
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=E:\Git\wix-pos-order\monitoring/health-check.py
+User=pi
+WorkingDirectory=E:\Git\wix-pos-order
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,32 @@
+{
+  "dashboard": {
+    "title": "Recovery Status Dashboard",
+    "refresh_interval": 30,
+    "panels": [
+      {
+        "title": "Current Recovery Session",
+        "type": "status",
+        "endpoint": "/recovery/status",
+        "fields": [
+          "current_session.id",
+          "current_session.type",
+          "current_session.phase",
+          "current_session.progress_percentage",
+          "current_session.items_total",
+          "current_session.items_processed",
+          "current_session.items_failed"
+        ]
+      },
+      {
+        "title": "Queue Statistics",
+        "type": "metrics",
+        "endpoint": "/recovery/statistics",
+        "fields": [
+          "queue_statistics.total_items",
+          "recovery_statistics.priority_distribution",
+          "recovery_statistics.recovery_urgency"
+        ]
+      }
+    ]
+  }
+}

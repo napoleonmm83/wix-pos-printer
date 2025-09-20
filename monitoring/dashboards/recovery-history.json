@@ -1,0 +1,28 @@
+{
+  "dashboard": {
+    "title": "Recovery History Dashboard",
+    "refresh_interval": 300,
+    "panels": [
+      {
+        "title": "Recovery Sessions (Last 24h)",
+        "type": "timeline",
+        "endpoint": "/recovery/history",
+        "params": {
+          "limit": 50
+        },
+        "fields": [
+          "recovery_history.*.timestamp",
+          "recovery_history.*.event_type",
+          "recovery_history.*.details"
+        ]
+      },
+      {
+        "title": "Success Rate Trends",
+        "type": "chart",
+        "endpoint": "/recovery/statistics",
+        "chart_type": "line",
+        "time_range": "7d"
+      }
+    ]
+  }
+}
