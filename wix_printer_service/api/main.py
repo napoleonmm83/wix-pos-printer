@@ -193,6 +193,25 @@ def test_print(printer_client: PrinterClient = Depends(get_printer_client)):
         logger.error(f"Test print error: {e}")
         raise HTTPException(status_code=500, detail=f"Test print failed: {e}")
 
+@app.get("/wix/test", tags=["Wix"], response_model=dict)
+def wix_test(wix_client: WixClient = Depends(get_wix_client)):
+    """
+    Test Wix API connectivity using configured API Key and Site ID.
+    Returns JSON with status.
+    """
+    if not wix_client:
+        raise HTTPException(status_code=503, detail="Wix client unavailable. Set WIX_API_KEY and WIX_SITE_ID.")
+    try:
+        ok = wix_client.test_connection()
+        if ok:
+            return {"status": "ok", "message": "Wix API reachable"}
+        raise HTTPException(status_code=502, detail="Wix API test failed. Check API Key permissions and Site ID.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Wix test error: {e}")
+        raise HTTPException(status_code=500, detail=f"Wix test error: {e}")
+
 @app.post("/webhook/orders", tags=["Webhooks"])
 async def webhook_orders(
     request: Request,

@@ -29,7 +29,7 @@ class WixClient:
         """Initialize the Wix API client with authentication credentials."""
         self.api_key = os.getenv('WIX_API_KEY')
         self.site_id = os.getenv('WIX_SITE_ID')
-        self.base_url = 'https://www.wixapis.com'
+        self.base_url = os.getenv('WIX_API_BASE_URL', 'https://www.wixapis.com')
         
         if not self.api_key:
             raise WixAPIError("WIX_API_KEY environment variable is required")
