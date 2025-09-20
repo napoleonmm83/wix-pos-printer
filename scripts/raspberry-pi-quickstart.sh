@@ -470,6 +470,43 @@ if [ ! -f ".env" ]; then
             echo "   ✅ USB device path: $PRINTER_DEVICE_PATH"
         fi
         
+        # Paper width configuration
+        echo ""
+        echo "4️⃣ PAPER ROLL WIDTH:"
+        echo "   What width is your receipt paper?"
+        echo ""
+        echo "   1) 58mm (2.3 inches) - Common for small receipts"
+        echo "   2) 80mm (3.1 inches) - Standard restaurant receipts ⭐"
+        echo "   3) Custom width"
+        echo ""
+        
+        while true; do
+            read -p "   👉 Choose paper width (1-3, or press ENTER for 80mm): " paper_choice
+            
+            case $paper_choice in
+                1)
+                    PAPER_WIDTH="58"
+                    break
+                    ;;
+                2|"")
+                    PAPER_WIDTH="80"
+                    break
+                    ;;
+                3)
+                    echo -n "   Enter paper width in mm (default: 80): "
+                    read PAPER_WIDTH
+                    if [ -z "$PAPER_WIDTH" ]; then
+                        PAPER_WIDTH="80"
+                    fi
+                    break
+                    ;;
+                *)
+                    echo "   ❌ Please enter 1, 2, or 3"
+                    ;;
+            esac
+        done
+        echo "   ✅ Paper width: ${PAPER_WIDTH}mm"
+        
     elif [[ "$PRINTER_DETECTION" == usb:* ]]; then
         PRINTER_TYPE="epson"
         PRINTER_INTERFACE="usb"
@@ -480,6 +517,24 @@ if [ ! -f ".env" ]; then
         echo "✅ Device path: $PRINTER_DEVICE_PATH"
         echo "✅ Configuration: Ready to use!"
         
+        # Paper width for auto-detected USB printer
+        echo ""
+        echo "📏 PAPER ROLL WIDTH:"
+        echo "   What width is your receipt paper?"
+        echo ""
+        echo "   1) 58mm (2.3 inches) - Small receipts"
+        echo "   2) 80mm (3.1 inches) - Standard restaurant receipts ⭐"
+        echo ""
+        while true; do
+            read -p "   👉 Choose paper width (1-2, or press ENTER for 80mm): " paper_choice
+            case $paper_choice in
+                1) PAPER_WIDTH="58"; break ;;
+                2|"") PAPER_WIDTH="80"; break ;;
+                *) echo "   ❌ Please enter 1 or 2" ;;
+            esac
+        done
+        echo "   ✅ Paper width: ${PAPER_WIDTH}mm"
+        
     elif [ "$PRINTER_DETECTION" = "usb" ]; then
         PRINTER_TYPE="epson"
         PRINTER_INTERFACE="usb"
@@ -489,6 +544,24 @@ if [ ! -f ".env" ]; then
         echo "✅ Detected: Epson printer via USB"
         echo "✅ Device path: $PRINTER_DEVICE_PATH"
         echo "✅ Configuration: Ready to use!"
+        
+        # Paper width for auto-detected USB printer
+        echo ""
+        echo "📏 PAPER ROLL WIDTH:"
+        echo "   What width is your receipt paper?"
+        echo ""
+        echo "   1) 58mm (2.3 inches) - Small receipts"
+        echo "   2) 80mm (3.1 inches) - Standard restaurant receipts ⭐"
+        echo ""
+        while true; do
+            read -p "   👉 Choose paper width (1-2, or press ENTER for 80mm): " paper_choice
+            case $paper_choice in
+                1) PAPER_WIDTH="58"; break ;;
+                2|"") PAPER_WIDTH="80"; break ;;
+                *) echo "   ❌ Please enter 1 or 2" ;;
+            esac
+        done
+        echo "   ✅ Paper width: ${PAPER_WIDTH}mm"
         
     elif [ "$PRINTER_DETECTION" = "network" ]; then
         PRINTER_TYPE="epson"
@@ -505,6 +578,24 @@ if [ ! -f ".env" ]; then
             PRINTER_DEVICE_PATH="192.168.1.100"
         fi
         echo "✅ Network printer configured!"
+        
+        # Paper width for network printer
+        echo ""
+        echo "📏 PAPER ROLL WIDTH:"
+        echo "   What width is your receipt paper?"
+        echo ""
+        echo "   1) 58mm (2.3 inches) - Small receipts"
+        echo "   2) 80mm (3.1 inches) - Standard restaurant receipts ⭐"
+        echo ""
+        while true; do
+            read -p "   👉 Choose paper width (1-2, or press ENTER for 80mm): " paper_choice
+            case $paper_choice in
+                1) PAPER_WIDTH="58"; break ;;
+                2|"") PAPER_WIDTH="80"; break ;;
+                *) echo "   ❌ Please enter 1 or 2" ;;
+            esac
+        done
+        echo "   ✅ Paper width: ${PAPER_WIDTH}mm"
     fi
     echo ""
     
@@ -516,9 +607,70 @@ if [ ! -f ".env" ]; then
     echo "   • Printer Type: $PRINTER_TYPE"
     echo "   • Connection Method: $PRINTER_INTERFACE"
     echo "   • Device Address: $PRINTER_DEVICE_PATH"
+    echo "   • Paper Width: ${PAPER_WIDTH}mm"
     echo ""
-    echo "✅ Your printer is now configured and ready!"
+    echo "✅ Your printer is now configured!"
     echo ""
+    
+    # Optional test print
+    echo "🧪 OPTIONAL TEST PRINT:"
+    echo "   Would you like to print a test receipt to verify everything works?"
+    echo "   This will help ensure your printer is properly connected and configured."
+    echo ""
+    read -p "❓ Print test receipt now? (y/N): " -n 1 -r
+    echo
+    echo ""
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "🖨️  PRINTING TEST RECEIPT..."
+        echo ""
+        
+        # Create a simple test receipt
+        if [ "$PRINTER_INTERFACE" = "usb" ]; then
+            # Test print for USB printer
+            if [ -e "$PRINTER_DEVICE_PATH" ]; then
+                echo "Testing USB printer at $PRINTER_DEVICE_PATH..."
+                {
+                    echo ""
+                    echo "================================"
+                    echo "    WIX PRINTER SERVICE TEST"
+                    echo "================================"
+                    echo ""
+                    echo "✅ Printer Type: $PRINTER_TYPE"
+                    echo "✅ Connection: $PRINTER_INTERFACE"
+                    echo "✅ Device: $PRINTER_DEVICE_PATH"
+                    echo "✅ Paper Width: ${PAPER_WIDTH}mm"
+                    echo ""
+                    echo "Date: $(date)"
+                    echo ""
+                    echo "Epic 2 Self-Healing Features:"
+                    echo "• Intelligent Retry System"
+                    echo "• Health Monitoring"
+                    echo "• Circuit Breaker Protection"
+                    echo ""
+                    echo "🎉 TEST SUCCESSFUL!"
+                    echo "Your printer is ready for"
+                    echo "restaurant operations!"
+                    echo ""
+                    echo "================================"
+                    echo ""
+                    echo ""
+                    echo ""
+                } > "$PRINTER_DEVICE_PATH" 2>/dev/null && echo "   ✅ Test receipt printed successfully!" || echo "   ⚠️  Test print failed - check printer connection"
+            else
+                echo "   ⚠️  Printer device not found: $PRINTER_DEVICE_PATH"
+                echo "   You can test printing after the service is running"
+            fi
+        elif [ "$PRINTER_INTERFACE" = "network" ]; then
+            echo "   📡 Network printer test will be available after service startup"
+            echo "   You can test via: curl http://localhost:8000/test-print"
+        fi
+        echo ""
+    else
+        echo "⏭️  Test print skipped - you can test later via the API"
+        echo ""
+    fi
+    
     read -p "👉 Press ENTER to continue to service configuration..."
     echo ""
     
@@ -772,6 +924,7 @@ WIX_API_BASE_URL=$WIX_API_BASE_URL
 PRINTER_TYPE=$PRINTER_TYPE
 PRINTER_INTERFACE=$PRINTER_INTERFACE
 PRINTER_DEVICE_PATH=$PRINTER_DEVICE_PATH
+PAPER_WIDTH=$PAPER_WIDTH
 
 # Service Configuration
 SERVICE_HOST=$SERVICE_HOST
@@ -818,6 +971,7 @@ EOF"
     echo "   Type: $PRINTER_TYPE"
     echo "   Connection: $PRINTER_INTERFACE"
     echo "   Address: $PRINTER_DEVICE_PATH"
+    echo "   Paper Width: ${PAPER_WIDTH}mm"
     echo ""
     echo "⚙️  SERVICE SETTINGS:"
     echo "   Host: $SERVICE_HOST"
