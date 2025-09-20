@@ -733,24 +733,25 @@ restaurant operations!
 
 "
                 
-                # Try to print
-                if echo "$TEST_CONTENT" > "$PRINTER_DEVICE_PATH" 2>/dev/null; then
+                # Try to print as wix-printer (member of lp group) via tee
+                if printf "%s" "$TEST_CONTENT" | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1; then
                     echo "   ✅ Test receipt printed successfully!"
                 else
                     echo "   ⚠️  Test print failed - attempting permission fix (lp group + 660)"
                     sudo chgrp lp "$PRINTER_DEVICE_PATH" 2>/dev/null || true
                     sudo chmod 660 "$PRINTER_DEVICE_PATH" 2>/dev/null || true
-                    if echo "$TEST_CONTENT" > "$PRINTER_DEVICE_PATH" 2>/dev/null; then
+                    if printf "%s" "$TEST_CONTENT" | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1; then
                         echo "   ✅ Test receipt printed successfully after permission fix!"
                     else
                         echo "   ❌ Still cannot write to $PRINTER_DEVICE_PATH"
                         echo "   🔎 Details:"
                         ls -la "$PRINTER_DEVICE_PATH" 2>/dev/null || echo "   (device disappeared)"
+                        echo "   👥 wix-printer groups: $(id -nG wix-printer 2>/dev/null)"
                         echo "   👉 Next steps:"
                         echo "      1) Ensure user 'wix-printer' is in group 'lp' (it is by default)"
                         echo "      2) Replug printer USB cable and power-cycle the printer"
                         echo "      3) Run: sudo chgrp lp $PRINTER_DEVICE_PATH && sudo chmod 660 $PRINTER_DEVICE_PATH"
-                        echo "      4) If it persists, try: sudo modprobe -r usblp (libusb printing mode)"
+                        echo "      4) If it persists, unload kernel usblp to allow libusb: sudo modprobe -r usblp"
                     fi
                 fi
             else
