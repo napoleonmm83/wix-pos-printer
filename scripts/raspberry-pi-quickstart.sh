@@ -262,27 +262,38 @@ if [ ! -f ".env" ]; then
     echo "First, we need to connect to your Wix restaurant website."
     echo ""
     echo "ℹ️  HOW TO FIND YOUR WIX CREDENTIALS:"
-    echo "   1. Go to your Wix Dashboard"
-    echo "   2. Navigate to Settings > Business Info"
-    echo "   3. Look for 'Site ID' or 'Business ID'"
-    echo "   4. For API Key: Go to Settings > Integrations > API Keys"
+    echo "   1. Go to: https://dev.wix.com/apps"
+    echo "   2. Select your app"
+    echo "   3. Go to 'OAuth' page in your app's dashboard"
+    echo "   4. Copy the 'App ID' and 'App Secret Key'"
+    echo "   5. For Site ID: Go to your site dashboard, check the URL after '/dashboard/'"
     echo ""
     echo "📝 If you don't have these yet, you can:"
     echo "   - Enter 'test' for now and configure later"
     echo "   - Or press CTRL+C to exit and get your credentials first"
     echo ""
     
-    echo "🔑 WIX API KEY:"
-    echo "   This is your secret key to connect to Wix"
+    echo "🔑 WIX APP ID:"
+    echo "   This is your App ID from the OAuth page"
+    echo "   Example: 714a84bf-5f5c-40c5-8ea0-a6fe7eccc7e1"
+    echo ""
+    WIX_APP_ID=$(get_input "   👉 Enter your Wix App ID (or 'test-app-id' for testing)" "test-app-id")
+    echo ""
+    echo "   ✅ App ID entered: $WIX_APP_ID"
+    echo ""
+    
+    echo "🔐 WIX APP SECRET KEY:"
+    echo "   This is your App Secret Key from the OAuth page"
     echo "   ⚠️  Keep this private - it's like a password!"
     echo ""
-    WIX_API_KEY=$(get_input "   👉 Enter your Wix API Key (or 'test' for testing)" "test" "true")
+    WIX_APP_SECRET=$(get_input "   👉 Enter your Wix App Secret Key (or 'test-secret' for testing)" "test-secret" "true")
     echo ""
-    echo "   ✅ API Key entered: $([ "$WIX_API_KEY" = "test" ] && echo "TEST MODE" || echo "***HIDDEN***")"
+    echo "   ✅ App Secret entered: $([ "$WIX_APP_SECRET" = "test-secret" ] && echo "TEST MODE" || echo "***HIDDEN***")"
     echo ""
     
     echo "🆔 WIX SITE ID:"
     echo "   This identifies your specific restaurant website"
+    echo "   Find it in your site dashboard URL after '/dashboard/'"
     echo "   Example: 12345678-1234-1234-1234-123456789abc"
     echo ""
     WIX_SITE_ID=$(get_input "   👉 Enter your Wix Site ID (or 'test-site' for testing)" "test-site")
@@ -296,13 +307,15 @@ if [ ! -f ".env" ]; then
     WIX_API_BASE_URL=$(get_input "   👉 Wix API Base URL" "https://www.wixapis.com")
     echo ""
     
-    if [ "$WIX_API_KEY" = "test" ] || [ "$WIX_SITE_ID" = "test-site" ]; then
+    if [ "$WIX_APP_ID" = "test-app-id" ] || [ "$WIX_APP_SECRET" = "test-secret" ] || [ "$WIX_SITE_ID" = "test-site" ]; then
         echo "⚠️  WARNING: You're using test credentials!"
         echo "   The service will start but won't receive real orders."
         echo "   You can update these later in the .env file."
         echo ""
     else
         echo "✅ Wix API configured successfully!"
+        echo "   App ID: $WIX_APP_ID"
+        echo "   Site ID: $WIX_SITE_ID"
         echo ""
     fi
     
@@ -667,8 +680,9 @@ if [ ! -f ".env" ]; then
 # Database
 DATABASE_URL=sqlite:///data/wix_printer.db
 
-# Wix API Configuration
-WIX_API_KEY=$WIX_API_KEY
+# Wix API Configuration (OAuth)
+WIX_APP_ID=$WIX_APP_ID
+WIX_APP_SECRET=$WIX_APP_SECRET
 WIX_SITE_ID=$WIX_SITE_ID
 WIX_API_BASE_URL=$WIX_API_BASE_URL
 
@@ -713,9 +727,10 @@ EOF"
     echo "=========================================="
     echo ""
     echo "🎯 WIX CONNECTION:"
+    echo "   App ID: $WIX_APP_ID"
     echo "   Site ID: $WIX_SITE_ID"
     echo "   API URL: $WIX_API_BASE_URL"
-    echo "   Status: $([ "$WIX_API_KEY" = "test" ] && echo "⚠️  Test Mode" || echo "✅ Production Ready")"
+    echo "   Status: $([ "$WIX_APP_ID" = "test-app-id" ] && echo "⚠️  Test Mode" || echo "✅ Production Ready")"
     echo ""
     echo "🖨️  PRINTER SETUP:"
     echo "   Type: $PRINTER_TYPE"
