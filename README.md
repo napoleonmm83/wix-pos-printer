@@ -26,8 +26,8 @@ An intelligent, autonomous printing service that runs on Raspberry Pi and automa
 ### **Raspberry Pi Setup (Recommended)**
 ```bash
 # 1. Clone repository
-git clone https://github.com/your-username/wix-pos-order.git
-cd wix-pos-order
+git clone https://github.com/napoleonmm83/wix-pos-printer.git
+cd wix-pos-printer
 
 # 2. Run automated setup
 chmod +x scripts/raspberry-pi-quickstart.sh
@@ -46,8 +46,8 @@ sudo systemctl start wix-printer.service
 ### **Development Setup**
 ```bash
 # 1. Clone and setup
-git clone https://github.com/your-username/wix-pos-order.git
-cd wix-pos-order
+git clone https://github.com/napoleonmm83/wix-pos-printer.git
+cd wix-pos-printer
 
 # 2. Create virtual environment
 python -m venv venv
@@ -320,8 +320,8 @@ This project represents a complete transformation from a simple printer service 
 
 ## 📞 **Support**
 
-- **Issues**: [GitHub Issues](https://github.com/your-username/wix-pos-order/issues)
-- **Documentation**: [Wiki](https://github.com/your-username/wix-pos-order/wiki)
+- **Issues**: [GitHub Issues](https://github.com/napoleonmm83/wix-pos-printer/issues)
+- **Documentation**: [Wiki](https://github.com/napoleonmm83/wix-pos-printer/wiki)
 - **Email**: support@your-domain.com
 
 ---
