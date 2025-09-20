@@ -196,7 +196,7 @@ detect_printer() {
             if [ -w "$device" ] 2>/dev/null; then
                 echo "   ✅ Device is writable (ready to use)" >&2
             else
-                echo "   ⚠️  Device found but may need permissions (try: sudo chmod 666 $device)" >&2
+                echo "   ⚠️  Device found but may need permissions (try: sudo chgrp lp $device && sudo chmod 660 $device)" >&2
             fi
         fi
     done
@@ -737,9 +737,21 @@ restaurant operations!
                 if echo "$TEST_CONTENT" > "$PRINTER_DEVICE_PATH" 2>/dev/null; then
                     echo "   ✅ Test receipt printed successfully!"
                 else
-                    echo "   ⚠️  Test print failed - device may not be ready"
-                    echo "   💡 Try: sudo chmod 666 $PRINTER_DEVICE_PATH"
-                    echo "   💡 Or check: ls -la $PRINTER_DEVICE_PATH"
+                    echo "   ⚠️  Test print failed - attempting permission fix (lp group + 660)"
+                    sudo chgrp lp "$PRINTER_DEVICE_PATH" 2>/dev/null || true
+                    sudo chmod 660 "$PRINTER_DEVICE_PATH" 2>/dev/null || true
+                    if echo "$TEST_CONTENT" > "$PRINTER_DEVICE_PATH" 2>/dev/null; then
+                        echo "   ✅ Test receipt printed successfully after permission fix!"
+                    else
+                        echo "   ❌ Still cannot write to $PRINTER_DEVICE_PATH"
+                        echo "   🔎 Details:"
+                        ls -la "$PRINTER_DEVICE_PATH" 2>/dev/null || echo "   (device disappeared)"
+                        echo "   👉 Next steps:"
+                        echo "      1) Ensure user 'wix-printer' is in group 'lp' (it is by default)"
+                        echo "      2) Replug printer USB cable and power-cycle the printer"
+                        echo "      3) Run: sudo chgrp lp $PRINTER_DEVICE_PATH && sudo chmod 660 $PRINTER_DEVICE_PATH"
+                        echo "      4) If it persists, try: sudo modprobe -r usblp (libusb printing mode)"
+                    fi
                 fi
             else
                 echo "   ⚠️  Printer device not found: $PRINTER_DEVICE_PATH"
