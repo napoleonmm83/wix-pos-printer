@@ -102,14 +102,216 @@ print(\"Database initialized successfully!\")
 '
 "
 
-# Phase 6: Environment configuration
-log "⚙️ Phase 6: Setting up environment configuration..."
+# Phase 6: Interactive Configuration Setup
+log "⚙️ Phase 6: Interactive configuration setup..."
+
+# Function to detect printer
+detect_printer() {
+    log "🖨️ Detecting connected printers..."
+    
+    # Check for Epson printers via USB
+    EPSON_USB=$(lsusb | grep -i epson | head -1)
+    if [ ! -z "$EPSON_USB" ]; then
+        log "✅ Found Epson printer via USB: $EPSON_USB"
+        echo "usb"
+        return 0
+    fi
+    
+    # Check for network printers
+    NETWORK_PRINTER=$(lpstat -p 2>/dev/null | grep -i epson | head -1)
+    if [ ! -z "$NETWORK_PRINTER" ]; then
+        log "✅ Found Epson printer via network: $NETWORK_PRINTER"
+        echo "network"
+        return 0
+    fi
+    
+    # Check USB device paths
+    for device in /dev/usb/lp* /dev/lp*; do
+        if [ -e "$device" ]; then
+            log "✅ Found printer device: $device"
+            echo "usb:$device"
+            return 0
+        fi
+    done
+    
+    warn "No Epson printer detected. Please connect your printer and try again."
+    echo "none"
+    return 1
+}
+
+# Function to get user input with default value
+get_input() {
+    local prompt="$1"
+    local default="$2"
+    local secret="$3"
+    
+    if [ "$secret" = "true" ]; then
+        echo -n "$prompt"
+        [ ! -z "$default" ] && echo -n " (default: ***hidden***)"
+        echo -n ": "
+        read -s user_input
+        echo
+    else
+        echo -n "$prompt"
+        [ ! -z "$default" ] && echo -n " (default: $default)"
+        echo -n ": "
+        read user_input
+    fi
+    
+    if [ -z "$user_input" ]; then
+        echo "$default"
+    else
+        echo "$user_input"
+    fi
+}
+
 if [ ! -f ".env" ]; then
-    sudo -u wix-printer cp .env.example .env
-    log "Created .env file from template"
-    warn "Please edit .env file with your configuration before starting the service"
+    echo ""
+    echo "=========================================="
+    echo "🔧 INTERACTIVE CONFIGURATION SETUP"
+    echo "=========================================="
+    echo ""
+    echo "Let's configure your Wix Printer Service with Epic 2 Self-Healing capabilities!"
+    echo ""
+    
+    # Wix API Configuration
+    echo "📡 WIX API CONFIGURATION"
+    echo "----------------------------------------"
+    WIX_API_KEY=$(get_input "Enter your Wix API Key" "" "true")
+    WIX_SITE_ID=$(get_input "Enter your Wix Site ID" "")
+    WIX_API_BASE_URL=$(get_input "Wix API Base URL" "https://www.wixapis.com")
+    echo ""
+    
+    # Printer Detection and Configuration
+    echo "🖨️ PRINTER CONFIGURATION"
+    echo "----------------------------------------"
+    PRINTER_DETECTION=$(detect_printer)
+    
+    if [ "$PRINTER_DETECTION" = "none" ]; then
+        echo "Manual printer configuration required:"
+        PRINTER_TYPE=$(get_input "Printer type" "epson")
+        PRINTER_INTERFACE=$(get_input "Printer interface (usb/network)" "usb")
+        PRINTER_DEVICE_PATH=$(get_input "Printer device path" "/dev/usb/lp0")
+    elif [[ "$PRINTER_DETECTION" == usb:* ]]; then
+        PRINTER_TYPE="epson"
+        PRINTER_INTERFACE="usb"
+        PRINTER_DEVICE_PATH="${PRINTER_DETECTION#usb:}"
+        log "✅ Auto-configured USB printer: $PRINTER_DEVICE_PATH"
+    elif [ "$PRINTER_DETECTION" = "usb" ]; then
+        PRINTER_TYPE="epson"
+        PRINTER_INTERFACE="usb"
+        PRINTER_DEVICE_PATH="/dev/usb/lp0"
+        log "✅ Auto-configured USB printer"
+    elif [ "$PRINTER_DETECTION" = "network" ]; then
+        PRINTER_TYPE="epson"
+        PRINTER_INTERFACE="network"
+        PRINTER_DEVICE_PATH=$(get_input "Printer IP address" "192.168.1.100")
+        log "✅ Configured network printer"
+    fi
+    echo ""
+    
+    # Service Configuration
+    echo "⚙️ SERVICE CONFIGURATION"
+    echo "----------------------------------------"
+    SERVICE_HOST=$(get_input "Service host" "0.0.0.0")
+    SERVICE_PORT=$(get_input "Service port" "8000")
+    LOG_LEVEL=$(get_input "Log level (DEBUG/INFO/WARNING/ERROR)" "INFO")
+    echo ""
+    
+    # Epic 2 Self-Healing Configuration
+    echo "🏥 EPIC 2 SELF-HEALING CONFIGURATION"
+    echo "----------------------------------------"
+    echo "Configure intelligent retry, health monitoring, and circuit breaker settings:"
+    HEALTH_CHECK_INTERVAL=$(get_input "Health check interval (seconds)" "30")
+    RETRY_MAX_ATTEMPTS=$(get_input "Maximum retry attempts" "5")
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD=$(get_input "Circuit breaker failure threshold" "3")
+    CIRCUIT_BREAKER_TIMEOUT=$(get_input "Circuit breaker timeout (seconds)" "60")
+    echo ""
+    
+    # Email Notifications
+    echo "📧 EMAIL NOTIFICATIONS (Optional - can be configured later)"
+    echo "----------------------------------------"
+    echo "Configure email notifications for critical events:"
+    read -p "Do you want to configure email notifications now? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        SMTP_SERVER=$(get_input "SMTP server (e.g., smtp.gmail.com)" "")
+        SMTP_PORT=$(get_input "SMTP port" "587")
+        SMTP_USERNAME=$(get_input "SMTP username/email" "")
+        SMTP_PASSWORD=$(get_input "SMTP password" "" "true")
+        NOTIFICATION_FROM_EMAIL=$(get_input "From email address" "$SMTP_USERNAME")
+        NOTIFICATION_TO_EMAIL=$(get_input "To email address (for alerts)" "")
+        SMTP_USE_TLS="true"
+    else
+        SMTP_SERVER=""
+        SMTP_PORT="587"
+        SMTP_USERNAME=""
+        SMTP_PASSWORD=""
+        NOTIFICATION_FROM_EMAIL=""
+        NOTIFICATION_TO_EMAIL=""
+        SMTP_USE_TLS="true"
+        log "Email notifications can be configured later with: python scripts/setup-notifications.py"
+    fi
+    echo ""
+    
+    # Create .env file with user input
+    log "Creating .env file with your configuration..."
+    sudo -u wix-printer bash -c "cat > .env << EOF
+# Database
+DATABASE_URL=sqlite:///data/wix_printer.db
+
+# Wix API Configuration
+WIX_API_KEY=$WIX_API_KEY
+WIX_SITE_ID=$WIX_SITE_ID
+WIX_API_BASE_URL=$WIX_API_BASE_URL
+
+# Printer Configuration
+PRINTER_TYPE=$PRINTER_TYPE
+PRINTER_INTERFACE=$PRINTER_INTERFACE
+PRINTER_DEVICE_PATH=$PRINTER_DEVICE_PATH
+
+# Service Configuration
+SERVICE_HOST=$SERVICE_HOST
+SERVICE_PORT=$SERVICE_PORT
+LOG_LEVEL=$LOG_LEVEL
+
+# Epic 2 Self-Healing Configuration
+HEALTH_CHECK_INTERVAL=$HEALTH_CHECK_INTERVAL
+RETRY_MAX_ATTEMPTS=$RETRY_MAX_ATTEMPTS
+CIRCUIT_BREAKER_FAILURE_THRESHOLD=$CIRCUIT_BREAKER_FAILURE_THRESHOLD
+CIRCUIT_BREAKER_TIMEOUT=$CIRCUIT_BREAKER_TIMEOUT
+CIRCUIT_BREAKER_RECOVERY_TIMEOUT=30
+
+# Email Notifications
+SMTP_SERVER=$SMTP_SERVER
+SMTP_PORT=$SMTP_PORT
+SMTP_USERNAME=$SMTP_USERNAME
+SMTP_PASSWORD=$SMTP_PASSWORD
+SMTP_USE_TLS=$SMTP_USE_TLS
+NOTIFICATION_FROM_EMAIL=$NOTIFICATION_FROM_EMAIL
+NOTIFICATION_TO_EMAIL=$NOTIFICATION_TO_EMAIL
+NOTIFICATION_THROTTLE_MINUTES=15
+
+# Monitoring Configuration
+ENABLE_PERFORMANCE_MONITORING=true
+ENABLE_HEALTH_MONITORING=true
+HEALTH_CHECK_ENDPOINT_ENABLED=true
+METRICS_RETENTION_DAYS=30
+EOF"
+    
+    log "✅ Configuration file created successfully!"
+    echo ""
+    echo "📋 CONFIGURATION SUMMARY:"
+    echo "----------------------------------------"
+    echo "Wix Site ID: $WIX_SITE_ID"
+    echo "Printer: $PRINTER_TYPE ($PRINTER_INTERFACE) at $PRINTER_DEVICE_PATH"
+    echo "Service: $SERVICE_HOST:$SERVICE_PORT"
+    echo "Self-Healing: Enabled with Epic 2 features"
+    echo "Email Notifications: $([ ! -z "$SMTP_SERVER" ] && echo "Configured" || echo "Not configured")"
+    echo ""
+    
 else
-    log ".env file already exists"
+    log ".env file already exists, skipping interactive configuration"
 fi
 
 # Phase 7: Service installation
