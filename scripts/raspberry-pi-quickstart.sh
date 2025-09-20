@@ -113,7 +113,7 @@ log "💡 TIP: Use '$0 --help' for all available options"
 # Phase 1: System Update
 log "📦 Phase 1: Updating system packages..."
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y git python3-pip python3-venv sqlite3 curl cups cups-client
+sudo apt install -y git python3-pip python3-venv sqlite3 curl cups cups-client usbutils netcat-openbsd
 
 # Verify Python version
 PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
@@ -181,21 +181,22 @@ log "⚙️ Phase 6: Interactive configuration setup..."
 
 # Function to detect printer
 detect_printer() {
-    echo "🔍 Scanning for connected printers..."
-    echo ""
+    # All informational output goes to stderr so the caller can capture only the result
+    echo "🔍 Scanning for connected printers..." >&2
+    echo "" >&2
     
     # Check for any USB printers first (most common)
-    echo "   Checking USB connections..."
+    echo "   Checking USB connections..." >&2
     USB_DEVICES_FOUND=false
     for device in /dev/usb/lp* /dev/lp*; do
         if [ -e "$device" ]; then
-            echo "   ✅ Found USB printer device: $device"
+            echo "   ✅ Found USB printer device: $device" >&2
             USB_DEVICES_FOUND=true
             # Check if it's accessible
             if [ -w "$device" ] 2>/dev/null; then
-                echo "   ✅ Device is writable (ready to use)"
+                echo "   ✅ Device is writable (ready to use)" >&2
             else
-                echo "   ⚠️  Device found but may need permissions"
+                echo "   ⚠️  Device found but may need permissions (try: sudo chmod 666 $device)" >&2
             fi
         fi
     done
@@ -205,60 +206,69 @@ detect_printer() {
         return 0
     fi
     
-    # Check for Epson printers specifically via lsusb
-    echo "   Checking for Epson printers via USB..."
-    EPSON_USB=$(lsusb 2>/dev/null | grep -i epson)
-    if [ ! -z "$EPSON_USB" ]; then
-        echo "   ✅ Found Epson printer via lsusb:"
-        echo "      $EPSON_USB"
-        echo "   ⚠️  Device file may not be created yet"
-        echo "usb"
-        return 0
-    fi
-    
-    # Check for any thermal printer brands
-    echo "   Checking for thermal printers..."
-    THERMAL_PRINTERS=$(lsusb 2>/dev/null | grep -iE "(epson|star|citizen|bixolon|custom|pos)")
-    if [ ! -z "$THERMAL_PRINTERS" ]; then
-        echo "   ✅ Found thermal printer:"
-        echo "      $THERMAL_PRINTERS"
-        echo "usb"
-        return 0
+    # Check for Epson printers specifically via lsusb (if available)
+    echo "   Checking for Epson printers via USB..." >&2
+    if command -v lsusb >/dev/null 2>&1; then
+        EPSON_USB=$(lsusb 2>/dev/null | grep -i epson || true)
+        if [ -n "$EPSON_USB" ]; then
+            echo "   ✅ Found Epson printer via lsusb:" >&2
+            echo "      $EPSON_USB" >&2
+            echo "   ⚠️  Device file may not be created yet" >&2
+            echo "usb"
+            return 0
+        fi
+        # Any thermal brand
+        THERMAL_PRINTERS=$(lsusb 2>/dev/null | grep -iE "(epson|star|citizen|bixolon|custom|pos)" || true)
+        if [ -n "$THERMAL_PRINTERS" ]; then
+            echo "   ✅ Found thermal printer:" >&2
+            echo "      $THERMAL_PRINTERS" >&2
+            echo "usb"
+            return 0
+        fi
+    else
+        echo "   ℹ️  lsusb not available; skipping USB vendor scan" >&2
     fi
     
     # Check for network printers via CUPS
-    echo "   Checking network printers..."
+    echo "   Checking network printers..." >&2
     if command -v lpstat >/dev/null 2>&1; then
-        NETWORK_PRINTER=$(lpstat -p 2>/dev/null | grep -i printer)
-        if [ ! -z "$NETWORK_PRINTER" ]; then
-            echo "   ✅ Found network printer via CUPS:"
-            echo "      $NETWORK_PRINTER"
+        NETWORK_PRINTER=$(lpstat -p 2>/dev/null | grep -i printer || true)
+        if [ -n "$NETWORK_PRINTER" ]; then
+            echo "   ✅ Found network printer via CUPS:" >&2
+            echo "      $NETWORK_PRINTER" >&2
             echo "network"
             return 0
         fi
+    else
+        echo "   ℹ️  lpstat not available; skipping CUPS scan" >&2
     fi
     
-    # Check common network printer ports
-    echo "   Scanning common printer IP addresses..."
+    # Check common network printer ports (if tools exist)
+    echo "   Scanning common printer IP addresses..." >&2
     for ip in 192.168.1.{100..110} 192.168.0.{100..110}; do
-        if ping -c 1 -W 1 "$ip" >/dev/null 2>&1; then
-            # Check if it responds on common printer ports
-            if nc -z -w1 "$ip" 9100 2>/dev/null || nc -z -w1 "$ip" 515 2>/dev/null; then
-                echo "   ✅ Found potential network printer at $ip"
+        if command -v ping >/dev/null 2>&1 && ping -c 1 -W 1 "$ip" >/dev/null 2>&1; then
+            if command -v nc >/dev/null 2>&1; then
+                if nc -z -w1 "$ip" 9100 >/dev/null 2>&1 || nc -z -w1 "$ip" 515 >/dev/null 2>&1; then
+                    echo "   ✅ Found potential network printer at $ip" >&2
+                    echo "network"
+                    return 0
+                fi
+            else
+                echo "   ⚠️  nc (netcat) not available; assuming reachable network printer at $ip" >&2
                 echo "network"
                 return 0
             fi
         fi
     done
     
-    echo "   ❌ No printers detected automatically"
-    echo ""
-    echo "   This could mean:"
-    echo "   • Printer is not connected or powered on"
-    echo "   • Printer needs manual configuration"
-    echo "   • Printer is connected via network with custom IP"
-    echo "   • USB permissions need to be set"
-    echo ""
+    echo "   ❌ No printers detected automatically" >&2
+    echo "" >&2
+    echo "   This could mean:" >&2
+    echo "   • Printer is not connected or powered on" >&2
+    echo "   • Printer needs manual configuration" >&2
+    echo "   • Printer is connected via network with custom IP" >&2
+    echo "   • USB permissions need to be set" >&2
+    echo "" >&2
     echo "none"
     return 1
 }
@@ -397,8 +407,16 @@ if [ ! -f ".env" ]; then
     echo "This works with Epson TM-m30III and most other thermal printers."
     echo ""
     
+    # Run detection without aborting on non-zero exit (set -e guard)
+    set +e
     PRINTER_DETECTION=$(detect_printer)
+    DETECT_EXIT=$?
+    set -e
     echo ""
+    if [ $DETECT_EXIT -ne 0 ] || [ -z "$PRINTER_DETECTION" ]; then
+        PRINTER_DETECTION="none"
+    fi
+    echo "   Detection result: $PRINTER_DETECTION"
     
     # Initialize default paper width
     PAPER_WIDTH="80"
