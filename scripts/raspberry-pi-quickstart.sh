@@ -1405,8 +1405,13 @@ setup_public_url_with_retry() {
         SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         PUBLIC_URL_SCRIPT="$SCRIPT_DIR/$SETUP_SCRIPT"
         
+        log "🔍 Debug: Script directory: $SCRIPT_DIR"
+        log "🔍 Debug: Looking for script: $PUBLIC_URL_SCRIPT"
+        
         if [ ! -f "$PUBLIC_URL_SCRIPT" ]; then
             error "Setup script not found: $PUBLIC_URL_SCRIPT"
+            error "Available scripts in $SCRIPT_DIR:"
+            ls -la "$SCRIPT_DIR"/*.sh || true
             return 1
         fi
         
@@ -1414,8 +1419,12 @@ setup_public_url_with_retry() {
         log "🔧 Making scripts executable..."
         chmod +x "$SCRIPT_DIR"/*.sh
         
-        # Run the setup script
-        if bash "$PUBLIC_URL_SCRIPT"; then
+        log "✅ Script found and made executable: $PUBLIC_URL_SCRIPT"
+        log "🚀 Starting $SETUP_SCRIPT..."
+        echo ""
+        
+        # Run the setup script with explicit path
+        if "$PUBLIC_URL_SCRIPT"; then
             echo ""
             echo "✅ Public URL setup completed!"
             echo ""
