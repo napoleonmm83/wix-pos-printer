@@ -1310,10 +1310,13 @@ setup_python_app_service() {
     log "✅ Your generated secure key is:"
     echo -e "${YELLOW}$generated_secret${NC}"
     log ""
-    log "📋 ACTION REQUIRED:"
-    log "   1. Copy this key."
-    log "   2. Go to your Wix Automations -> HTTP-Anfrage."
-    log "   3. Add a Header with Key 'X-Auth-Token' and this key as the Value."
+    log "📋 ACTION REQUIRED (in der Wix Automatisierung):"
+    log "   Füge im Abschnitt 'Header' der HTTP-Anfrage folgendes hinzu:"
+    log ""
+    echo -e "     ${BLUE}Schlüssel:${NC} X-Auth-Token"
+    echo -e "     ${BLUE}Wert:${NC}      ${YELLOW}$generated_secret${NC}"
+    log ""
+    log "   Kopiere den oben angezeigten 'Wert' und füge ihn in Wix ein."
     log ""
 
     local wix_secret
