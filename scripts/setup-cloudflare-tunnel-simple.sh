@@ -375,28 +375,70 @@ if [[ -z "$ACCOUNT_ID" ]]; then
 fi
 log "✅ Found Account ID: $ACCOUNT_ID"
 
-# Create tunnel via API
-echo ""
-log "🚇 Creating Cloudflare Tunnel via API..."
-TUNNEL_NAME="wix-printer-$(date +%s)"
-log "Tunnel name: $TUNNEL_NAME"
+# Use a static name for the tunnel to make it idempotent
+TUNNEL_NAME="wix-pos-printer-tunnel"
+log ""
+log "🚇 Checking for existing Cloudflare Tunnel named '$TUNNEL_NAME'..."
 
-# The tunnel secret is created locally and passed to the API
-TUNNEL_SECRET=$(openssl rand -base64 32)
-
-TUNNEL_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
+# --- Find-or-Create Tunnel Logic ---
+TUNNELS_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel?is_deleted=false&name=$TUNNEL_NAME" \
     -H "Authorization: Bearer $CF_API_TOKEN" \
-    -H "Content-Type: application/json" \
-    --data-raw '{"name":"'$TUNNEL_NAME'","tunnel_secret":"'$TUNNEL_SECRET'"}')
+    -H "Content-Type: application/json")
 
-if ! echo "$TUNNEL_RESPONSE" | jq -e '.success == true' > /dev/null; then
-    error "Failed to create tunnel via API."
-    echo "Response: $TUNNEL_RESPONSE"
-    exit 1
+TUNNEL_ID=$(echo "$TUNNELS_RESPONSE" | jq -r '.result[0].id')
+
+if [[ -n "$TUNNEL_ID" && "$TUNNEL_ID" != "null" ]]; then
+    log "✅ Found existing tunnel. Reusing it. Tunnel ID: $TUNNEL_ID"
+else
+    log "ℹ️ No existing tunnel found. Creating a new one..."
+    # The tunnel secret is created locally and passed to the API
+    TUNNEL_SECRET=$(openssl rand -base64 32)
+
+    TUNNEL_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
+        -H "Authorization: Bearer $CF_API_TOKEN" \
+        -H "Content-Type: application/json" \
+        --data-raw '{"name":"'$TUNNEL_NAME'","tunnel_secret":"'$TUNNEL_SECRET'"}')
+
+    if ! echo "$TUNNEL_RESPONSE" | jq -e '.success == true' > /dev/null; then
+        error "Failed to create tunnel via API."
+        echo "Response: $TUNNEL_RESPONSE"
+        exit 1
+    fi
+
+    TUNNEL_ID=$(echo "$TUNNEL_RESPONSE" | jq -r '.result.id')
+    log "✅ Tunnel created successfully via API! Tunnel ID: $TUNNEL_ID"
 fi
 
-TUNNEL_ID=$(echo "$TUNNEL_RESPONSE" | jq -r '.result.id')
-log "✅ Tunnel created successfully via API! Tunnel ID: $TUNNEL_ID"
+# --- Cleanup old, inactive tunnels ---
+log "🧹 Cleaning up old, inactive tunnels..."
+OLD_TUNNELS_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel?is_deleted=false" \
+    -H "Authorization: Bearer $CF_API_TOKEN" \
+    -H "Content-Type: application/json")
+
+# Select tunnels with the old naming convention that are inactive
+echo "$OLD_TUNNELS_RESPONSE" | jq -c '.result[] | select(.name | startswith("wix-printer-")) | select(.status != "healthy")' | while read -r tunnel_json; do
+    OLD_TUNNEL_ID=$(echo "$tunnel_json" | jq -r '.id')
+    OLD_TUNNEL_NAME=$(echo "$tunnel_json" | jq -r '.name')
+    log "🗑️ Deleting old, inactive tunnel: $OLD_TUNNEL_NAME (ID: $OLD_TUNNEL_ID)"
+    curl -s -X DELETE "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel/$OLD_TUNNEL_ID" \
+        -H "Authorization: Bearer $CF_API_TOKEN" \
+        -H "Content-Type: application/json" > /dev/null
+done
+log "✅ Cleanup complete."
+
+
+# --- Create Credentials File ---
+# We always create a new secret and credentials file to ensure the service can connect,
+# even if the old credentials were lost.
+log "✍️ Creating/updating tunnel credentials file..."
+TUNNEL_SECRET=$(openssl rand -base64 32)
+
+# Rotate the tunnel secret via API
+curl -s -X PATCH "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID" \
+    -H "Authorization: Bearer $CF_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    --data-raw '{"tunnel_secret":"'$TUNNEL_SECRET'"}' > /dev/null
+log "✅ Tunnel secret has been rotated for security."
 
 # Create the credentials file for the cloudflared daemon
 log "✍️ Creating tunnel credentials file..."
@@ -411,7 +453,7 @@ EOF
 chmod 600 ~/.cloudflared/"$TUNNEL_ID".json
 log "✅ Credentials file created."
 
-# The TUNNEL_ID is already available from the API response. No need to list tunnels.
+# The TUNNEL_ID is now determined by the find-or-create logic.
 
 # Create DNS record via API
 log "🌐 Creating DNS record via API..."
