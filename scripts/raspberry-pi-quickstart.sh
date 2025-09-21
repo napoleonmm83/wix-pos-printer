@@ -1376,23 +1376,38 @@ setup_public_url_with_retry() {
     # Choose setup method
     local setup_method=$(choose_setup_method)
     
+    # Determine which script to run based on user selection
+    local SETUP_SCRIPT
+    case $setup_method in
+        1)
+            SETUP_SCRIPT="setup-cloudflare-tunnel-simple.sh"
+            ;;
+        2)
+            SETUP_SCRIPT="setup-dynamic-dns.sh"
+            ;;
+        3)
+            SETUP_SCRIPT="setup-public-access.sh"
+            ;;
+        *)
+            error "Invalid setup method selected: $setup_method"
+            return 1
+            ;;
+    esac
+
     while [ $setup_attempt -le $max_setup_attempts ]; do
         echo ""
         case $setup_method in
             1)
                 echo "🚀 STARTING CLOUDFLARE TUNNEL SETUP (Attempt $setup_attempt/$max_setup_attempts)"
                 echo "================================================================="
-                SETUP_SCRIPT="setup-cloudflare-tunnel-simple.sh"
                 ;;
             2)
                 echo "🚀 STARTING DYNAMIC DNS SETUP (Attempt $setup_attempt/$max_setup_attempts)"
                 echo "=========================================================="
-                SETUP_SCRIPT="setup-dynamic-dns.sh"
                 ;;
             3)
                 echo "🚀 STARTING STATIC IP SETUP (Attempt $setup_attempt/$max_setup_attempts)"
                 echo "========================================================"
-                SETUP_SCRIPT="setup-public-access.sh"
                 ;;
         esac
         
