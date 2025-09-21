@@ -9,17 +9,23 @@ from unittest.mock import Mock, patch, AsyncMock
 from fastapi.testclient import TestClient
 from datetime import datetime
 
-from wix_printer_service.api.main import app
+from wix_printer_service.api.main import create_app
 from wix_printer_service.models import Order, PrintJob
 from wix_printer_service.database import Database
 
+
+@pytest.fixture
+def client():
+    """Create an isolated TestClient for each test."""
+    app = create_app()
+    with TestClient(app) as c:
+        yield c
 
 class TestWebhookWorkflowIntegration:
     """Test complete webhook processing workflow."""
     
     def setup_method(self):
-        """Set up test environment."""
-        self.client = TestClient(app)
+        """Set up test data for each test."""
         self.test_order_data = {
             "eventType": "OrderCreated",
             "eventId": "integration-test-123",
@@ -74,7 +80,7 @@ class TestWebhookWorkflowIntegration:
     @patch('wix_printer_service.api.main.get_connectivity_monitor')
     @patch('wix_printer_service.api.main.get_print_manager')
     def test_complete_webhook_to_print_workflow(self, mock_print_manager, mock_connectivity, 
-                                              mock_order_service, mock_database):
+                                              mock_order_service, mock_database, client):
         """Test complete workflow from webhook to print job creation."""
         
         # Mock database
@@ -102,7 +108,7 @@ class TestWebhookWorkflowIntegration:
         mock_print_manager_instance.health_monitor = mock_health_monitor
         
         # Send webhook request
-        response = self.client.post(
+        response = client.post(
             "/webhook/orders",
             json=self.test_order_data,
             headers={
@@ -137,7 +143,7 @@ class TestWebhookWorkflowIntegration:
     @patch('wix_printer_service.api.main.get_order_service')
     @patch('wix_printer_service.api.main.get_connectivity_monitor')
     @patch('wix_printer_service.api.main.get_print_manager')
-    def test_webhook_offline_workflow(self, mock_print_manager, mock_connectivity, mock_order_service):
+    def test_webhook_offline_workflow(self, mock_print_manager, mock_connectivity, mock_order_service, client):
         """Test webhook processing workflow in offline mode."""
         
         # Mock connectivity (offline)
@@ -159,7 +165,7 @@ class TestWebhookWorkflowIntegration:
         mock_print_manager_instance.health_monitor = mock_health_monitor
         
         # Send webhook request
-        response = self.client.post(
+        response = client.post(
             "/webhook/orders",
             json=self.test_order_data,
             headers={"Content-Type": "application/json"}
@@ -177,7 +183,7 @@ class TestWebhookWorkflowIntegration:
     @patch('wix_printer_service.api.main.get_order_service')
     @patch('wix_printer_service.api.main.get_connectivity_monitor')
     @patch('wix_printer_service.api.main.get_print_manager')
-    def test_webhook_with_print_job_failure(self, mock_print_manager, mock_connectivity, mock_order_service):
+    def test_webhook_with_print_job_failure(self, mock_print_manager, mock_connectivity, mock_order_service, client):
         """Test webhook processing when print job creation fails."""
         
         # Mock connectivity (online)
@@ -199,7 +205,7 @@ class TestWebhookWorkflowIntegration:
         mock_print_manager_instance.health_monitor = mock_health_monitor
         
         # Send webhook request
-        response = self.client.post(
+        response = client.post(
             "/webhook/orders",
             json=self.test_order_data,
             headers={"Content-Type": "application/json"}
@@ -214,7 +220,7 @@ class TestWebhookWorkflowIntegration:
         # Verify health monitoring still records success
         mock_health_monitor.record_webhook_request.assert_called_once_with(success=True)
     
-    def test_webhook_duplicate_detection(self):
+    def test_webhook_duplicate_detection(self, client):
         """Test webhook duplicate detection workflow."""
         
         # Create webhook data with same event ID
@@ -223,7 +229,7 @@ class TestWebhookWorkflowIntegration:
         with patch('wix_printer_service.webhook_validator.WebhookValidator.is_duplicate_request') as mock_duplicate:
             mock_duplicate.return_value = True
             
-            response = self.client.post(
+            response = client.post(
                 "/webhook/orders",
                 json=duplicate_data,
                 headers={"Content-Type": "application/json"}
@@ -234,7 +240,7 @@ class TestWebhookWorkflowIntegration:
             assert data["status"] == "duplicate"
             assert "already processed" in data["message"]
     
-    def test_webhook_non_order_event(self):
+    def test_webhook_non_order_event(self, client):
         """Test webhook processing for non-order events."""
         
         non_order_data = {
@@ -243,7 +249,7 @@ class TestWebhookWorkflowIntegration:
             "data": {"userId": "user-123"}
         }
         
-        response = self.client.post(
+        response = client.post(
             "/webhook/orders",
             json=non_order_data,
             headers={"Content-Type": "application/json"}
@@ -257,7 +263,7 @@ class TestWebhookWorkflowIntegration:
     @patch('wix_printer_service.api.main.get_order_service')
     @patch('wix_printer_service.api.main.get_connectivity_monitor')
     @patch('wix_printer_service.api.main.get_print_manager')
-    def test_webhook_error_notification(self, mock_print_manager, mock_connectivity, mock_order_service):
+    def test_webhook_error_notification(self, mock_print_manager, mock_connectivity, mock_order_service, client):
         """Test webhook error notification workflow."""
         
         # Mock connectivity (online)
@@ -278,7 +284,7 @@ class TestWebhookWorkflowIntegration:
         mock_print_manager_instance.health_monitor = mock_health_monitor
         
         # Send webhook request
-        response = self.client.post(
+        response = client.post(
             "/webhook/orders",
             json=self.test_order_data,
             headers={"Content-Type": "application/json"}
@@ -297,14 +303,10 @@ class TestWebhookWorkflowIntegration:
 class TestWebhookPerformance:
     """Test webhook performance and load handling."""
     
-    def setup_method(self):
-        """Set up test environment."""
-        self.client = TestClient(app)
-    
     @patch('wix_printer_service.api.main.get_order_service')
     @patch('wix_printer_service.api.main.get_connectivity_monitor')
     @patch('wix_printer_service.api.main.get_print_manager')
-    def test_webhook_processing_time(self, mock_print_manager, mock_connectivity, mock_order_service):
+    def test_webhook_processing_time(self, mock_print_manager, mock_connectivity, mock_order_service, client):
         """Test webhook processing time is reasonable."""
         
         # Mock fast processing
@@ -325,7 +327,7 @@ class TestWebhookPerformance:
             "data": {"id": "order-123"}
         }
         
-        response = self.client.post(
+        response = client.post(
             "/webhook/orders",
             json=webhook_data,
             headers={"Content-Type": "application/json"}
@@ -337,7 +339,7 @@ class TestWebhookPerformance:
         # Processing should be reasonably fast (< 1000ms for mocked operations)
         assert data["processing_time_ms"] < 1000
     
-    def test_webhook_concurrent_requests(self):
+    def test_webhook_concurrent_requests(self, client):
         """Test webhook handling of concurrent requests."""
         
         # This test would require more complex setup with actual threading
@@ -355,7 +357,7 @@ class TestWebhookPerformance:
             test_data["eventId"] = test_data["eventId"].format(i)
             test_data["data"]["id"] = test_data["data"]["id"].format(i)
             
-            response = self.client.post(
+            response = client.post(
                 "/webhook/orders",
                 json=test_data,
                 headers={"Content-Type": "application/json"}
@@ -370,14 +372,10 @@ class TestWebhookPerformance:
 class TestWebhookRecovery:
     """Test webhook recovery and self-healing scenarios."""
     
-    def setup_method(self):
-        """Set up test environment."""
-        self.client = TestClient(app)
-    
     @patch('wix_printer_service.api.main.get_order_service')
     @patch('wix_printer_service.api.main.get_connectivity_monitor')
     @patch('wix_printer_service.api.main.get_print_manager')
-    def test_webhook_recovery_after_failure(self, mock_print_manager, mock_connectivity, mock_order_service):
+    def test_webhook_recovery_after_failure(self, mock_print_manager, mock_connectivity, mock_order_service, client):
         """Test webhook processing recovery after temporary failure."""
         
         # Mock initial failure then success
@@ -400,7 +398,7 @@ class TestWebhookRecovery:
         }
         
         # First request should fail
-        response1 = self.client.post(
+        response1 = client.post(
             "/webhook/orders",
             json=webhook_data,
             headers={"Content-Type": "application/json"}
@@ -409,7 +407,7 @@ class TestWebhookRecovery:
         
         # Second request should succeed (simulating retry)
         webhook_data["eventId"] = "recovery-test-124"  # Different event ID
-        response2 = self.client.post(
+        response2 = client.post(
             "/webhook/orders",
             json=webhook_data,
             headers={"Content-Type": "application/json"}

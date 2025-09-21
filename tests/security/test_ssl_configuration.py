@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import requests
 from fastapi.testclient import TestClient
 
-from wix_printer_service.api.main import app
+from wix_printer_service.api.main import create_app
 
 
 class TestSSLCertificateValidation:
@@ -194,16 +194,19 @@ class TestSSLCertificateValidation:
         assert "Missing required field" in message
 
 
+@pytest.fixture
+def client():
+    """Create an isolated TestClient for each test."""
+    app = create_app()
+    with TestClient(app) as c:
+        yield c
+
 class TestSecurityHeaders:
     """Test security headers implementation."""
     
-    def setup_method(self):
-        """Set up test client."""
-        self.client = TestClient(app)
-    
-    def test_security_headers_present(self):
+    def test_security_headers_present(self, client):
         """Test that security headers are present in responses."""
-        response = self.client.get("/health")
+        response = client.get("/health")
         
         # Check for security headers
         expected_headers = {
@@ -218,18 +221,18 @@ class TestSecurityHeaders:
             assert header in response.headers, f"Missing security header: {header}"
             assert response.headers[header] == expected_value, f"Incorrect value for {header}"
     
-    def test_server_header_removed(self):
+    def test_server_header_removed(self, client):
         """Test that server header is removed for security."""
-        response = self.client.get("/health")
+        response = client.get("/health")
         
         # Server header should be removed
         assert "server" not in response.headers.keys()
         assert "Server" not in response.headers.keys()
     
-    def test_security_headers_on_webhook_endpoint(self):
+    def test_security_headers_on_webhook_endpoint(self, client):
         """Test security headers on webhook endpoint."""
         # Test with invalid webhook data to avoid processing
-        response = self.client.post(
+        response = client.post(
             "/webhook/orders",
             json={"invalid": "data"},
             headers={"Content-Type": "application/json"}
@@ -240,10 +243,10 @@ class TestSecurityHeaders:
         assert "X-Frame-Options" in response.headers
         assert "Strict-Transport-Security" in response.headers
     
-    def test_cors_headers_configuration(self):
+    def test_cors_headers_configuration(self, client):
         """Test CORS headers configuration."""
         # Test preflight request
-        response = self.client.options(
+        response = client.options(
             "/webhook/orders",
             headers={
                 "Origin": "https://www.wix.com",
@@ -256,7 +259,7 @@ class TestSecurityHeaders:
         assert response.status_code in [200, 204]
         
         # Test with non-Wix origin (should be restricted)
-        response = self.client.options(
+        response = client.options(
             "/webhook/orders",
             headers={
                 "Origin": "https://malicious-site.com",
@@ -291,9 +294,9 @@ class TestHTTPSEnforcement:
         assert should_redirect is False
         assert redirect_url is None
     
-    def test_hsts_header_configuration(self):
+    def test_hsts_header_configuration(self, client):
         """Test HSTS header configuration."""
-        response = self.client.get("/health")
+        response = client.get("/health")
         
         hsts_header = response.headers.get("Strict-Transport-Security")
         assert hsts_header is not None

@@ -71,81 +71,720 @@ print_manager = None
 connectivity_monitor = None
 offline_queue = None
 
-app = FastAPI(
-    title="Wix Printer Service",
-    description="Automated printing service for Wix orders on Raspberry Pi",
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
-)
+def create_app():
+    app = FastAPI(
+        title="Wix Printer Service",
+        description="Automated printing service for Wix orders on Raspberry Pi",
+        version="1.0.0",
+        docs_url="/docs",
+        redoc_url="/redoc"
+    )
 
-@app.on_event("startup")
-async def startup_event():
-    """Tasks to run on application startup."""
-    # Initialize all services
-    get_database()
-    get_order_service()
-    get_wix_client()
-    get_printer_client()
-    get_connectivity_monitor()
-    get_offline_queue()
-    get_print_manager()
-    
-    # Start the background polling task
-    asyncio.create_task(poll_for_new_orders())
-
-# Add security middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://www.wix.com", "https://manage.wix.com"],  # Only allow Wix domains
-    allow_credentials=False,
-    allow_methods=["POST", "GET"],  # Only allow necessary methods
-    allow_headers=["Content-Type", "X-Wix-Webhook-Signature"],
-)
-
-# Add security headers middleware
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    """Add security headers to all responses."""
-    response = await call_next(request)
-    
-    # Security headers
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    
-    # Remove server header for security
-    if "server" in response.headers:
-        del response.headers["server"]
-    
-    return response
-
-# Simple rate limiting for webhook endpoint
-webhook_rate_limit = {"requests": 0, "window_start": datetime.now()}
-
-@app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
-    """Simple rate limiting for webhook endpoints."""
-    if request.url.path == "/webhook/orders":
-        current_time = datetime.now()
-        window_duration = 60  # 1 minute window
-        max_requests = 100    # Max 100 requests per minute
+    @app.on_event("startup")
+    async def startup_event():
+        """Tasks to run on application startup."""
+        # Initialize all services
+        get_database()
+        get_order_service()
+        get_wix_client()
+        get_printer_client()
+        get_connectivity_monitor()
+        get_offline_queue()
+        get_print_manager()
         
-        # Reset window if needed
-        if (current_time - webhook_rate_limit["window_start"]).seconds >= window_duration:
-            webhook_rate_limit["requests"] = 0
-            webhook_rate_limit["window_start"] = current_time
+        # Start the background polling task
+        asyncio.create_task(poll_for_new_orders())
+
+    # Add security middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["https://www.wix.com", "https://manage.wix.com"],  # Only allow Wix domains
+        allow_credentials=False,
+        allow_methods=["POST", "GET"],  # Only allow necessary methods
+        allow_headers=["Content-Type", "X-Wix-Webhook-Signature"],
+    )
+
+    # Add security headers middleware
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        """Add security headers to all responses."""
+        response = await call_next(request)
         
-        # Check rate limit
-        if webhook_rate_limit["requests"] >= max_requests:
-            logger.warning(f"Rate limit exceeded for webhook endpoint from {request.client.host if request.client else 'unknown'}")
-            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        # Security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         
-        webhook_rate_limit["requests"] += 1
-    
-    return await call_next(request)
+        # Remove server header for security
+        if "server" in response.headers:
+            del response.headers["server"]
+        
+        return response
+
+    # Simple rate limiting for webhook endpoint
+    webhook_rate_limit = {"requests": 0, "window_start": datetime.now()}
+
+    @app.middleware("http")
+    async def rate_limit_middleware(request: Request, call_next):
+        """Simple rate limiting for webhook endpoints."""
+        if request.url.path == "/webhook/orders":
+            current_time = datetime.now()
+            window_duration = 60  # 1 minute window
+            max_requests = 100    # Max 100 requests per minute
+            
+            # Reset window if needed
+            if (current_time - webhook_rate_limit["window_start"]).seconds >= window_duration:
+                webhook_rate_limit["requests"] = 0
+                webhook_rate_limit["window_start"] = current_time
+            
+            # Check rate limit
+            if webhook_rate_limit["requests"] >= max_requests:
+                logger.warning(f"Rate limit exceeded for webhook endpoint from {request.client.host if request.client else 'unknown'}")
+                raise HTTPException(status_code=429, detail="Rate limit exceeded")
+            
+            webhook_rate_limit["requests"] += 1
+        
+        return await call_next(request)
+
+    @app.get("/health", tags=["Monitoring"], response_model=dict)
+    def health_check():
+        """
+        Health check endpoint to confirm the service is running and accessible.
+        
+        Returns:
+            dict: Status information with "ok" status
+        """
+        logger.info("Health check requested")
+        return {"status": "ok"}
+
+    @app.get("/test-print", tags=["Printer"], response_model=dict)
+    def test_print(printer_client: PrinterClient = Depends(get_printer_client)):
+        """
+        Trigger a simple test receipt through the configured printer.
+        Uses PrinterClient and returns a JSON status.
+        """
+        try:
+            if not printer_client:
+                raise HTTPException(status_code=500, detail="Printer client unavailable")
+
+            # Ensure connection
+            if not printer_client.is_connected:
+                if not printer_client.connect():
+                    raise HTTPException(status_code=503, detail="Printer not connected")
+
+            # Print a small test receipt
+            ok = printer_client.print_receipt(
+                content=(
+                    "WIX PRINTER SERVICE TEST\n\n"
+                    "✅ API reachable\n"
+                    "✅ Self-healing active\n\n"
+                ),
+                title="TEST PRINT"
+            )
+
+            if ok:
+                return {"status": "success", "message": "Test receipt sent"}
+            else:
+                raise HTTPException(status_code=500, detail="Printer reported failure")
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Test print error: {e}")
+            raise HTTPException(status_code=500, detail=f"Test print failed: {e}")
+
+    @app.get("/wix/test", tags=["Wix"], response_model=dict)
+    def wix_test(wix_client: WixClient = Depends(get_wix_client)):
+        """
+        Test Wix API connectivity using configured API Key and Site ID.
+        Returns JSON with status.
+        """
+        if not wix_client:
+            raise HTTPException(status_code=503, detail="Wix client unavailable. Set WIX_API_KEY and WIX_SITE_ID.")
+        try:
+            ok = wix_client.test_connection()
+            if ok:
+                return {"status": "ok", "message": "Wix API reachable"}
+            raise HTTPException(status_code=502, detail="Wix API test failed. Check API Key permissions and Site ID.")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Wix test error: {e}")
+            raise HTTPException(status_code=500, detail=f"Wix test error: {e}")
+
+    @app.post("/webhook/orders", tags=["Webhooks"])
+    async def webhook_orders(
+        request: Request,
+        order_service: OrderService = Depends(get_order_service),
+        connectivity_monitor: ConnectivityMonitor = Depends(get_connectivity_monitor),
+        print_manager: PrintManager = Depends(get_print_manager)
+    ):
+        """
+        Enhanced webhook endpoint for receiving Wix order notifications.
+        Includes signature validation, duplicate detection, and comprehensive error handling.
+        
+        Args:
+            request: FastAPI request object containing webhook data
+            order_service: Order service for processing orders
+            connectivity_monitor: Connectivity monitor for offline detection
+            print_manager: Print manager for job creation and monitoring
+            
+        Returns:
+            dict: Processing result with detailed status information
+        """
+        webhook_validator = get_webhook_validator()
+        start_time = datetime.now()
+        
+        # Get health monitor for webhook tracking
+        health_monitor = None
+        if print_manager and hasattr(print_manager, 'health_monitor'):
+            health_monitor = print_manager.health_monitor
+        
+        try:
+            # Get raw payload for signature validation
+            raw_payload = await request.body()
+            
+            # Validate webhook request (signature, headers, etc.)
+            validation_result = webhook_validator.validate_request(request, raw_payload)
+            
+            # Parse JSON payload
+            try:
+                webhook_data = await request.json()
+            except Exception as e:
+                logger.error(f"Invalid JSON payload in webhook: {e}")
+                raise HTTPException(status_code=400, detail="Invalid JSON payload")
+            
+            # Log webhook reception with validation details
+            event_type = webhook_data.get('eventType', 'unknown')
+            event_id = webhook_data.get('eventId', 'unknown')
+            logger.info(f"Received webhook: {event_type} (ID: {event_id}) - Validation: {validation_result['valid']}")
+            
+            # Check for duplicate requests
+            if webhook_validator.is_duplicate_request(webhook_data):
+                logger.warning(f"Duplicate webhook request detected: {event_id}")
+                return {
+                    "status": "duplicate",
+                    "message": f"Webhook {event_id} already processed",
+                    "event_id": event_id,
+                    "processing_time_ms": int((datetime.now() - start_time).total_seconds() * 1000)
+                }
+            
+            # Extract order data from webhook
+            order_data = webhook_validator.extract_order_data(webhook_data)
+            if not order_data:
+                logger.info(f"Webhook {event_type} does not contain order data - acknowledging")
+                return {
+                    "status": "acknowledged",
+                    "message": f"Non-order webhook {event_type} acknowledged",
+                    "event_type": event_type,
+                    "event_id": event_id
+                }
+            
+            # Process the order with enhanced error handling
+            order = None
+            processing_mode = "online"
+            
+            # Check connectivity and process accordingly
+            if connectivity_monitor and not connectivity_monitor.is_internet_online():
+                logger.info("Processing webhook in offline mode")
+                processing_mode = "offline"
+                order = order_service.process_offline_order(order_data)
+            else:
+                # Process normally with self-healing integration
+                order = order_service.process_webhook_order(order_data)
+            
+            if order:
+                # Create print jobs immediately for webhook orders
+                jobs_created = 0
+                if print_manager:
+                    try:
+                        jobs_created = print_manager.create_print_jobs_for_order(order.id)
+                        logger.info(f"Created {jobs_created} print jobs for webhook order {order.id}")
+                    except Exception as e:
+                        logger.error(f"Failed to create print jobs for webhook order {order.id}: {e}")
+                        # Don't fail the webhook - self-healing will retry
+                
+                processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
+                
+                # Record successful webhook request
+                if health_monitor:
+                    health_monitor.record_webhook_request(success=True)
+                
+                return {
+                    "status": "success",
+                    "message": f"Order {order.id} processed successfully ({processing_mode} mode)",
+                    "order_id": order.id,
+                    "event_type": event_type,
+                    "event_id": event_id,
+                    "processing_mode": processing_mode,
+                    "jobs_created": jobs_created,
+                    "processing_time_ms": processing_time,
+                    "validation_warnings": validation_result.get("warnings", [])
+                }
+            else:
+                logger.error(f"Failed to process webhook order from event {event_id}")
+                # Record failed webhook request
+                if health_monitor:
+                    health_monitor.record_webhook_request(success=False)
+                raise HTTPException(status_code=400, detail="Failed to process order from webhook")
+                
+        except HTTPException:
+            # Record failed webhook request for HTTP exceptions
+            if health_monitor:
+                health_monitor.record_webhook_request(success=False)
+            # Re-raise HTTP exceptions (validation failures, etc.)
+            raise
+        except Exception as e:
+            processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
+            logger.error(f"Error processing webhook: {e}")
+            
+            # Record failed webhook request
+            if health_monitor:
+                health_monitor.record_webhook_request(success=False)
+            
+            # Send error notification if available
+            if print_manager and print_manager.notification_service:
+                try:
+                    await print_manager.send_system_error_notification(
+                        error_type="Webhook Processing Error",
+                        error_message=str(e),
+                        context={
+                            "event_type": webhook_data.get('eventType', 'unknown') if 'webhook_data' in locals() else 'unknown',
+                            "event_id": webhook_data.get('eventId', 'unknown') if 'webhook_data' in locals() else 'unknown',
+                            "processing_time_ms": processing_time
+                        }
+                    )
+                except Exception as notification_error:
+                    logger.error(f"Failed to send webhook error notification: {notification_error}")
+            
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+    @app.get("/webhook/statistics", tags=["Webhooks"])
+    def get_webhook_statistics(
+        print_manager: PrintManager = Depends(get_print_manager)
+    ):
+        """
+        Get webhook processing statistics and health metrics.
+        
+        Returns:
+            dict: Webhook statistics including success/failure rates
+        """
+        if not print_manager or not hasattr(print_manager, 'health_monitor'):
+            raise HTTPException(status_code=503, detail="Health monitor not available")
+        
+        try:
+            health_monitor = print_manager.health_monitor
+            webhook_stats = health_monitor.get_webhook_stats()
+            
+            # Calculate additional metrics
+            total = webhook_stats["total_requests"]
+            success_rate = (webhook_stats["successful_requests"] / total * 100) if total > 0 else 100
+            failure_rate = (webhook_stats["failed_requests"] / total * 100) if total > 0 else 0
+            
+            return {
+                "webhook_statistics": webhook_stats,
+                "success_rate_percent": round(success_rate, 2),
+                "failure_rate_percent": round(failure_rate, 2),
+                "health_status": "healthy" if failure_rate < 10 else "degraded" if failure_rate < 25 else "unhealthy",
+                "rate_limit_status": {
+                    "current_window_requests": webhook_rate_limit["requests"],
+                    "window_start": webhook_rate_limit["window_start"].isoformat(),
+                    "max_requests_per_minute": 100
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error getting webhook statistics: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+    @app.post("/webhook/reset-stats", tags=["Webhooks"])
+    def reset_webhook_statistics(
+        print_manager: PrintManager = Depends(get_print_manager)
+    ):
+        """
+        Reset webhook statistics (useful for maintenance).
+        
+        Returns:
+            dict: Reset confirmation
+        """
+        if not print_manager or not hasattr(print_manager, 'health_monitor'):
+            raise HTTPException(status_code=503, detail="Health monitor not available")
+        
+        try:
+            health_monitor = print_manager.health_monitor
+            health_monitor.reset_webhook_stats()
+            
+            return {
+                "status": "success",
+                "message": "Webhook statistics reset successfully",
+                "reset_timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error resetting webhook statistics: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+    @app.get("/public-url/status", tags=["Public URL"])
+    def get_public_url_status():
+        """
+        Get public URL accessibility status and SSL certificate information.
+        
+        Returns:
+            dict: Public URL status including SSL certificate details
+        """
+        try:
+            from ..public_url_monitor import get_public_url_monitor
+            
+            monitor = get_public_url_monitor()
+            
+            if not monitor.is_configured():
+                return {
+                    "configured": False,
+                    "message": "Public URL monitoring not configured. Set PUBLIC_DOMAIN environment variable."
+                }
+            
+            health_metrics = monitor.get_health_metrics()
+            
+            return {
+                "configured": True,
+                "domain": health_metrics.get("domain"),
+                "status": health_metrics.get("status"),
+                "response_time_ms": health_metrics.get("response_time_ms"),
+                "dns_resolved_ip": health_metrics.get("dns_resolved_ip"),
+                "last_check": health_metrics.get("last_check"),
+                "error_message": health_metrics.get("error_message"),
+                "ssl_certificate": health_metrics.get("ssl_certificate"),
+                "health_status": "healthy" if monitor.is_healthy() else "unhealthy"
+            }
+            
+        except ImportError:
+            raise HTTPException(status_code=503, detail="Public URL monitor not available")
+        except Exception as e:
+            logger.error(f"Error getting public URL status: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+    @app.post("/public-url/check", tags=["Public URL"])
+    def force_public_url_check(
+        print_manager: PrintManager = Depends(get_print_manager)
+    ):
+        """
+        Force an immediate public URL accessibility check.
+        
+        Returns:
+            dict: Updated public URL status
+        """
+        try:
+            from ..public_url_monitor import get_public_url_monitor
+            
+            monitor = get_public_url_monitor()
+            
+            if not monitor.is_configured():
+                raise HTTPException(status_code=400, detail="Public URL monitoring not configured")
+            
+            # Perform immediate check
+            health = monitor.check_public_url_accessibility()
+            
+            # Record the check result in health monitoring
+            if print_manager and hasattr(print_manager, 'health_monitor'):
+                health_monitor = print_manager.health_monitor
+                health_monitor.record_public_url_check(health.status.value == "online")
+                
+                # Update SSL status if available
+                if health.ssl_info and health.ssl_info.days_until_expiry is not None:
+                    health_monitor.update_ssl_status(health.ssl_info.days_until_expiry)
+            
+            return {
+                "status": "success",
+                "message": "Public URL check completed",
+                "check_result": {
+                    "status": health.status.value,
+                    "response_time_ms": health.response_time_ms,
+                    "dns_resolved_ip": health.dns_resolved_ip,
+                    "ssl_valid": health.ssl_info.valid if health.ssl_info else False,
+                    "ssl_days_until_expiry": health.ssl_info.days_until_expiry if health.ssl_info else None,
+                    "error_message": health.error_message,
+                    "last_check": health.last_check.isoformat()
+                }
+            }
+            
+        except ImportError:
+            raise HTTPException(status_code=503, detail="Public URL monitor not available")
+        except Exception as e:
+            logger.error(f"Error forcing public URL check: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+    @app.get("/public-url/statistics", tags=["Public URL"])
+    def get_public_url_statistics(
+        print_manager: PrintManager = Depends(get_print_manager)
+    ):
+        """
+        Get public URL monitoring statistics and health metrics.
+        
+        Returns:
+            dict: Public URL statistics including success/failure rates
+        """
+        if not print_manager or not hasattr(print_manager, 'health_monitor'):
+            raise HTTPException(status_code=503, detail="Health monitor not available")
+        
+        try:
+            health_monitor = print_manager.health_monitor
+            public_url_stats = health_monitor.get_public_url_stats()
+            
+            # Calculate additional metrics
+            total = public_url_stats["total_checks"]
+            success_rate = (public_url_stats["successful_checks"] / total * 100) if total > 0 else 100
+            failure_rate = (public_url_stats["failed_checks"] / total * 100) if total > 0 else 0
+            
+            # Get current status
+            try:
+                from ..public_url_monitor import get_public_url_monitor
+                monitor = get_public_url_monitor()
+                current_health = monitor.get_health_metrics() if monitor.is_configured() else {}
+            except ImportError:
+                current_health = {}
+            
+            return {
+                "public_url_statistics": public_url_stats,
+                "success_rate_percent": round(success_rate, 2),
+                "failure_rate_percent": round(failure_rate, 2),
+                "health_status": "healthy" if failure_rate < 5 else "degraded" if failure_rate < 15 else "unhealthy",
+                "current_status": current_health.get("status", "unknown"),
+                "ssl_certificate": current_health.get("ssl_certificate", {}),
+                "domain": current_health.get("domain")
+            }
+        except Exception as e:
+            logger.error(f"Error getting public URL statistics: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+    @app.post("/public-url/reset-stats", tags=["Public URL"])
+    def reset_public_url_statistics(
+        print_manager: PrintManager = Depends(get_print_manager)
+    ):
+        """
+        Reset public URL statistics (useful for maintenance).
+        
+        Returns:
+            dict: Reset confirmation
+        """
+        if not print_manager or not hasattr(print_manager, 'health_monitor'):
+            raise HTTPException(status_code=503, detail="Health monitor not available")
+        
+        try:
+            health_monitor = print_manager.health_monitor
+            health_monitor.reset_public_url_stats()
+            
+            return {
+                "status": "success",
+                "message": "Public URL statistics reset successfully",
+                "reset_timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error resetting public URL statistics: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+    @app.get("/orders/sync", tags=["Orders"], response_model=dict)
+    def sync_orders(
+        status: Optional[str] = None, # e.g., APPROVED, PAID
+        limit: int = 100,
+        from_date: Optional[str] = None, # ISO format: YYYY-MM-DD
+        wix_client: WixClient = Depends(get_wix_client),
+        order_service: OrderService = Depends(get_order_service)
+    ):
+        """
+        Pull latest orders from Wix API and ingest them into the local database.
+        Creates print jobs only for new orders to avoid duplicates.
+        """
+        if not wix_client:
+            raise HTTPException(status_code=503, detail="Wix client not configured (set WIX_API_KEY and WIX_SITE_ID)")
+
+        try:
+            data = wix_client.get_orders_since(from_date=from_date, status=status, limit=limit)
+            orders_list = []
+            # Flexible parsing of API result
+            if isinstance(data, dict):
+                if "orders" in data and isinstance(data["orders"], list):
+                    orders_list = data["orders"]
+                elif "data" in data and isinstance(data["data"], list):
+                    orders_list = data["data"]
+            elif isinstance(data, list):
+                orders_list = data
+
+            processed = 0
+            created_jobs = 0
+            existing = 0
+            errors = 0
+            for o in orders_list:
+                result = order_service.ingest_order_from_api(o)
+                if "error" in result:
+                    errors += 1
+                    logger.warning(f"Ingest error for order {result.get('order_id')}: {result['error']}")
+                    continue
+                processed += 1
+                created_jobs += int(result.get("created_jobs", 0))
+                if result.get("existing"):
+                    existing += 1
+
+            return {
+                "status": "ok",
+                "fetched": len(orders_list),
+                "processed": processed,
+                "created_jobs": created_jobs,
+                "existing": existing,
+                "errors": errors
+            }
+        except Exception as e:
+            logger.error(f"Order sync failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Order sync failed: {e}")
+
+    @app.get("/orders/{order_id}", tags=["Orders"])
+    def get_order(
+        order_id: str,
+        order_service: OrderService = Depends(get_order_service)
+    ):
+        """
+        Retrieve an order by ID.
+        
+        Args:
+            order_id: Order ID to retrieve
+            order_service: Order service for data access
+            
+        Returns:
+            dict: Order data or error message
+        """
+        try:
+            order = order_service.get_order_by_id(order_id)
+            
+            if order:
+                return {
+                    "status": "success",
+                    "order": order.to_dict()
+                }
+            else:
+                raise HTTPException(status_code=404, detail="Order not found")
+                
+        except Exception as e:
+            logger.error(f"Error retrieving order {order_id}: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+    @app.get("/api/status", tags=["Monitoring"])
+    def api_status(
+        db: Database = Depends(get_database),
+        wix_client: WixClient = Depends(get_wix_client),
+        printer_client: PrinterClient = Depends(get_printer_client),
+        print_manager: PrintManager = Depends(get_print_manager),
+        connectivity_monitor: ConnectivityMonitor = Depends(get_connectivity_monitor)
+    ):
+        """
+        Get detailed API status including database, Wix API, and printer connectivity.
+        
+        Returns:
+            dict: Detailed status information
+        """
+        status = {
+            "service": "running",
+            "database": "unknown",
+            "wix_api": "unknown",
+            "printer": "unknown",
+            "print_manager": "unknown",
+            "connectivity": "unknown",
+            "offline_mode": False
+        }
+        
+        # Test database connection
+        try:
+            with db.get_connection() as conn:
+                conn.execute("SELECT 1")
+            status["database"] = "connected"
+        except Exception as e:
+            logger.error(f"Database connection test failed: {e}")
+            status["database"] = "disconnected"
+        
+        # Test Wix API connection
+        if wix_client:
+            try:
+                if wix_client.test_connection():
+                    status["wix_api"] = "connected"
+                else:
+                    status["wix_api"] = "disconnected"
+            except Exception as e:
+                logger.error(f"Wix API connection test failed: {e}")
+                status["wix_api"] = "error"
+        else:
+            status["wix_api"] = "not_configured"
+        
+        # Test printer connection
+        if printer_client:
+            try:
+                printer_status = printer_client.get_status()
+                status["printer"] = printer_status.value
+                status["printer_info"] = printer_client.get_printer_info()
+            except Exception as e:
+                logger.error(f"Printer status check failed: {e}")
+                status["printer"] = "error"
+        else:
+            status["printer"] = "not_configured"
+        
+        # Get print manager status
+        if print_manager:
+            try:
+                status["print_manager"] = "running" if print_manager._running else "stopped"
+                status["print_statistics"] = print_manager.get_job_statistics()
+            except Exception as e:
+                logger.error(f"Print manager status check failed: {e}")
+                status["print_manager"] = "error"
+        else:
+            status["print_manager"] = "not_configured"
+        
+        # Get connectivity status
+        if connectivity_monitor:
+            try:
+                connectivity_status = connectivity_monitor.get_status()
+                status["connectivity"] = connectivity_status
+                status["offline_mode"] = not connectivity_monitor.is_fully_online()
+            except Exception as e:
+                logger.error(f"Connectivity status check failed: {e}")
+                status["connectivity"] = "error"
+        else:
+            status["connectivity"] = "not_configured"
+        
+        return status
+
+    @app.post("/print/job/{job_id}", tags=["Printing"])
+    def trigger_print_job(
+        job_id: str,
+        print_manager: PrintManager = Depends(get_print_manager)
+    ):
+        """
+        Manually trigger a specific print job.
+        
+        Args:
+            job_id: ID of the print job to process
+            print_manager: Print manager instance
+            
+        Returns:
+            dict: Result of the print operation
+        """
+        if not print_manager:
+            raise HTTPException(status_code=503, detail="Print manager not available")
+        
+        try:
+            success = print_manager.process_job_immediately(job_id)
+            
+            if success:
+                return {
+                    "status": "success",
+                    "message": f"Print job {job_id} processed successfully"
+                }
+            else:
+                raise HTTPException(status_code=400, detail=f"Failed to process print job {job_id}")
+                
+        except Exception as e:
+            logger.error(f"Error triggering print job {job_id}: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+    return app
+
+app = create_app()
 
 
 def get_database() -> Database:

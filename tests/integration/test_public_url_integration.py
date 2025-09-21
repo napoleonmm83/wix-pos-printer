@@ -7,19 +7,22 @@ from unittest.mock import Mock, patch, MagicMock
 from fastapi.testclient import TestClient
 from datetime import datetime, timedelta
 
-from wix_printer_service.api.main import app
+from wix_printer_service.api.main import create_app
 from wix_printer_service.public_url_monitor import PublicUrlStatus, SSLCertificateInfo, PublicUrlHealth
 
 
+@pytest.fixture
+def client():
+    """Create an isolated TestClient for each test."""
+    app = create_app()
+    with TestClient(app) as c:
+        yield c
+
 class TestPublicUrlAPIIntegration:
     """Test public URL API endpoints integration."""
-    
-    def setup_method(self):
-        """Set up test client."""
-        self.client = TestClient(app)
-    
+
     @patch('wix_printer_service.api.main.get_public_url_monitor')
-    def test_public_url_status_endpoint_configured(self, mock_get_monitor):
+    def test_public_url_status_endpoint_configured(self, mock_get_monitor, client):
         """Test public URL status endpoint when configured."""
         # Mock monitor
         mock_monitor = Mock()
@@ -53,13 +56,13 @@ class TestPublicUrlAPIIntegration:
         assert data["ssl_certificate"]["valid"] is True
     
     @patch('wix_printer_service.api.main.get_public_url_monitor')
-    def test_public_url_status_endpoint_not_configured(self, mock_get_monitor):
+    def test_public_url_status_endpoint_not_configured(self, mock_get_monitor, client):
         """Test public URL status endpoint when not configured."""
         mock_monitor = Mock()
         mock_monitor.is_configured.return_value = False
         mock_get_monitor.return_value = mock_monitor
         
-        response = self.client.get("/public-url/status")
+        response = client.get("/public-url/status")
         
         assert response.status_code == 200
         data = response.json()
@@ -67,18 +70,18 @@ class TestPublicUrlAPIIntegration:
         assert "not configured" in data["message"]
     
     @patch('wix_printer_service.api.main.get_public_url_monitor')
-    def test_public_url_status_endpoint_import_error(self, mock_get_monitor):
+    def test_public_url_status_endpoint_import_error(self, mock_get_monitor, client):
         """Test public URL status endpoint with import error."""
         mock_get_monitor.side_effect = ImportError("Module not found")
         
-        response = self.client.get("/public-url/status")
+        response = client.get("/public-url/status")
         
         assert response.status_code == 503
         assert "not available" in response.json()["detail"]
     
     @patch('wix_printer_service.api.main.get_public_url_monitor')
     @patch('wix_printer_service.api.main.get_print_manager')
-    def test_force_public_url_check_success(self, mock_get_print_manager, mock_get_monitor):
+    def test_force_public_url_check_success(self, mock_get_print_manager, mock_get_monitor, client):
         """Test force public URL check endpoint."""
         # Mock monitor
         mock_monitor = Mock()
@@ -108,7 +111,7 @@ class TestPublicUrlAPIIntegration:
         mock_print_manager.health_monitor = mock_health_monitor
         mock_get_print_manager.return_value = mock_print_manager
         
-        response = self.client.post("/public-url/check")
+        response = client.post("/public-url/check")
         
         assert response.status_code == 200
         data = response.json()
@@ -122,19 +125,19 @@ class TestPublicUrlAPIIntegration:
         mock_health_monitor.update_ssl_status.assert_called_once_with(30)
     
     @patch('wix_printer_service.api.main.get_public_url_monitor')
-    def test_force_public_url_check_not_configured(self, mock_get_monitor):
+    def test_force_public_url_check_not_configured(self, mock_get_monitor, client):
         """Test force public URL check when not configured."""
         mock_monitor = Mock()
         mock_monitor.is_configured.return_value = False
         mock_get_monitor.return_value = mock_monitor
         
-        response = self.client.post("/public-url/check")
+        response = client.post("/public-url/check")
         
         assert response.status_code == 400
         assert "not configured" in response.json()["detail"]
     
     @patch('wix_printer_service.api.main.get_print_manager')
-    def test_public_url_statistics_endpoint(self, mock_get_print_manager):
+    def test_public_url_statistics_endpoint(self, mock_get_print_manager, client):
         """Test public URL statistics endpoint."""
         # Mock print manager with health monitor
         mock_health_monitor = Mock()
@@ -163,7 +166,7 @@ class TestPublicUrlAPIIntegration:
             }
             mock_get_monitor.return_value = mock_monitor
             
-            response = self.client.get("/public-url/statistics")
+            response = client.get("/public-url/statistics")
         
         assert response.status_code == 200
         data = response.json()
@@ -173,14 +176,14 @@ class TestPublicUrlAPIIntegration:
         assert data["current_status"] == "online"
     
     @patch('wix_printer_service.api.main.get_print_manager')
-    def test_reset_public_url_statistics_endpoint(self, mock_get_print_manager):
+    def test_reset_public_url_statistics_endpoint(self, mock_get_print_manager, client):
         """Test reset public URL statistics endpoint."""
         mock_health_monitor = Mock()
         mock_print_manager = Mock()
         mock_print_manager.health_monitor = mock_health_monitor
         mock_get_print_manager.return_value = mock_print_manager
         
-        response = self.client.post("/public-url/reset-stats")
+        response = client.post("/public-url/reset-stats")
         
         assert response.status_code == 200
         data = response.json()
@@ -190,21 +193,21 @@ class TestPublicUrlAPIIntegration:
         # Verify reset was called
         mock_health_monitor.reset_public_url_stats.assert_called_once()
     
-    def test_public_url_endpoints_without_health_monitor(self):
+    def test_public_url_endpoints_without_health_monitor(self, client):
         """Test public URL endpoints when health monitor is not available."""
         with patch('wix_printer_service.api.main.get_print_manager') as mock_get_print_manager:
             mock_get_print_manager.return_value = None
             
             # Test statistics endpoint
-            response = self.client.get("/public-url/statistics")
+            response = client.get("/public-url/statistics")
             assert response.status_code == 503
             
             # Test reset endpoint
-            response = self.client.post("/public-url/reset-stats")
+            response = client.post("/public-url/reset-stats")
             assert response.status_code == 503
             
             # Test check endpoint
-            response = self.client.post("/public-url/check")
+            response = client.post("/public-url/check")
             # This should still work but without health monitor integration
             assert response.status_code in [200, 400, 503]
 
@@ -294,17 +297,13 @@ class TestPublicUrlHealthIntegration:
 class TestPublicUrlEndToEndWorkflow:
     """Test end-to-end public URL workflow."""
     
-    def setup_method(self):
-        """Set up test client."""
-        self.client = TestClient(app)
-    
     @patch.dict('os.environ', {'PUBLIC_DOMAIN': 'test.example.com'})
     @patch('requests.get')
     @patch('socket.gethostbyname')
     @patch('socket.create_connection')
     @patch('ssl.create_default_context')
     def test_complete_public_url_workflow(self, mock_ssl_context, mock_connection, 
-                                        mock_gethostbyname, mock_requests):
+                                        mock_gethostbyname, mock_requests, client):
         """Test complete public URL monitoring workflow."""
         # Mock DNS resolution
         mock_gethostbyname.return_value = '192.168.1.100'
@@ -331,7 +330,7 @@ class TestPublicUrlEndToEndWorkflow:
         mock_requests.return_value = mock_response
         
         # Test status endpoint
-        response = self.client.get("/public-url/status")
+        response = client.get("/public-url/status")
         assert response.status_code == 200
         
         data = response.json()
@@ -339,22 +338,22 @@ class TestPublicUrlEndToEndWorkflow:
         assert data["domain"] == "test.example.com"
         assert data["health_status"] == "healthy"
     
-    def test_public_url_workflow_not_configured(self):
+    def test_public_url_workflow_not_configured(self, client):
         """Test public URL workflow when not configured."""
         with patch.dict('os.environ', {}, clear=True):
             # Test status endpoint
-            response = self.client.get("/public-url/status")
+            response = client.get("/public-url/status")
             assert response.status_code == 200
             
             data = response.json()
             assert data["configured"] is False
             
             # Test check endpoint (should fail)
-            response = self.client.post("/public-url/check")
+            response = client.post("/public-url/check")
             assert response.status_code == 400
     
     @patch('wix_printer_service.api.main.get_print_manager')
-    def test_public_url_statistics_workflow(self, mock_get_print_manager):
+    def test_public_url_statistics_workflow(self, mock_get_print_manager, client):
         """Test public URL statistics workflow."""
         # Mock print manager
         mock_health_monitor = Mock()
@@ -370,7 +369,7 @@ class TestPublicUrlEndToEndWorkflow:
         mock_get_print_manager.return_value = mock_print_manager
         
         # Get statistics
-        response = self.client.get("/public-url/statistics")
+        response = client.get("/public-url/statistics")
         assert response.status_code == 200
         
         data = response.json()
@@ -379,7 +378,7 @@ class TestPublicUrlEndToEndWorkflow:
         assert data["health_status"] == "healthy"
         
         # Reset statistics
-        response = self.client.post("/public-url/reset-stats")
+        response = client.post("/public-url/reset-stats")
         assert response.status_code == 200
         
         # Verify reset was called
