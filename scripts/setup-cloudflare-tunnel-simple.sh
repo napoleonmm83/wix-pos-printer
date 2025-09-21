@@ -429,6 +429,30 @@ if [[ -z "$ZONE_ID" ]]; then
 fi
 log "✅ Found Zone ID: $ZONE_ID"
 
+# Clean up existing DNS records for the same name to ensure idempotency
+log "🧹 Checking for and cleaning up existing DNS records for $FULL_DOMAIN..."
+EXISTING_RECORDS_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?name=$FULL_DOMAIN" \
+    -H "Authorization: Bearer $CF_API_TOKEN" \
+    -H "Content-Type: application/json")
+
+EXISTING_RECORD_IDS=$(echo "$EXISTING_RECORDS_RESPONSE" | jq -r '.result[].id')
+
+if [[ -n "$EXISTING_RECORD_IDS" ]]; then
+    for RECORD_ID in $EXISTING_RECORD_IDS; do
+        log "🗑️ Deleting existing DNS record with ID: $RECORD_ID"
+        DELETE_RESPONSE=$(curl -s -X DELETE "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RECORD_ID" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -H "Content-Type: application/json")
+        if ! echo "$DELETE_RESPONSE" | jq -e '.success == true' > /dev/null; then
+            warn "Failed to delete existing DNS record $RECORD_ID. This might cause issues."
+        else
+            log "✅ Existing DNS record deleted."
+        fi
+    done
+else
+    log "✅ No existing DNS records found. Proceeding to create a new one."
+fi
+
 # Create CNAME record pointing to the tunnel
 DNS_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
     -H "Authorization: Bearer $CF_API_TOKEN" \
