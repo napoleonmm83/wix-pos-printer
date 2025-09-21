@@ -283,8 +283,8 @@ fi
 # Extract IDs using jq (now guaranteed to be installed)
 ZONE_READ_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="Zone Read") | .id')
 DNS_WRITE_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="DNS Write") | .id')
-# Use 'contains' for a more robust search, as the exact name can vary.
-TUNNEL_WRITE_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name | contains("Tunnel")) | .id')
+# Use a more specific 'contains' search to ensure only one ID is returned.
+TUNNEL_WRITE_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name | contains("Tunnel") and contains("Write")) | .id')
 
 if [[ -z "$ZONE_READ_ID" || -z "$DNS_WRITE_ID" || -z "$TUNNEL_WRITE_ID" ]]; then
     error "Could not dynamically determine required permission IDs."
