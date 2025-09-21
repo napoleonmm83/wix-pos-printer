@@ -375,38 +375,46 @@ if [[ -z "$ACCOUNT_ID" ]]; then
 fi
 log "✅ Found Account ID: $ACCOUNT_ID"
 
-# Use a static name for the tunnel to make it idempotent
-TUNNEL_NAME="wix-pos-printer-tunnel"
+# --- Advanced Find-or-Create Tunnel Logic ---
 log ""
-log "🚇 Checking for existing Cloudflare Tunnel named '$TUNNEL_NAME'..."
+log "🚇 Searching for a suitable Cloudflare Tunnel..."
+TUNNEL_NAME="wix-pos-printer-tunnel" # The desired static name for new tunnels
 
-# --- Find-or-Create Tunnel Logic ---
-TUNNELS_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel?is_deleted=false&name=$TUNNEL_NAME" \
+# First, get all tunnels to perform an advanced search
+ALL_TUNNELS_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel?is_deleted=false" \
     -H "Authorization: Bearer $CF_API_TOKEN" \
     -H "Content-Type: application/json")
 
-TUNNEL_ID=$(echo "$TUNNELS_RESPONSE" | jq -r '.result[0].id')
+# Priority 1: Find an already healthy tunnel from a previous run
+TUNNEL_ID=$(echo "$ALL_TUNNELS_RESPONSE" | jq -r '[.result[] | select(.name | startswith("wix-printer")) | select(.status == "healthy")] | .[0].id')
 
 if [[ -n "$TUNNEL_ID" && "$TUNNEL_ID" != "null" ]]; then
-    log "✅ Found existing tunnel. Reusing it. Tunnel ID: $TUNNEL_ID"
+    log "✅ Found an existing HEALTHY tunnel from a previous run. Reusing it to avoid disruption. Tunnel ID: $TUNNEL_ID"
 else
-    log "ℹ️ No existing tunnel found. Creating a new one..."
-    # The tunnel secret is created locally and passed to the API
-    TUNNEL_SECRET=$(openssl rand -base64 32)
+    log "ℹ️ No healthy tunnel found. Searching for tunnel by static name '$TUNNEL_NAME'..."
+    # Priority 2: Find a tunnel by the static name, regardless of status
+    TUNNEL_ID=$(echo "$ALL_TUNNELS_RESPONSE" | jq -r --arg name "$TUNNEL_NAME" '[.result[] | select(.name == $name)] | .[0].id')
 
-    TUNNEL_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
-        -H "Authorization: Bearer $CF_API_TOKEN" \
-        -H "Content-Type: application/json" \
-        --data-raw '{"name":"'$TUNNEL_NAME'","tunnel_secret":"'$TUNNEL_SECRET'"}')
+    if [[ -n "$TUNNEL_ID" && "$TUNNEL_ID" != "null" ]]; then
+        log "✅ Found existing tunnel named '$TUNNEL_NAME'. Reusing it. Tunnel ID: $TUNNEL_ID"
+    else
+        # Priority 3: Create a new tunnel with the static name
+        log "ℹ️ No suitable tunnel found. Creating a new one named '$TUNNEL_NAME'..."
+        TUNNEL_SECRET=$(openssl rand -base64 32)
+        TUNNEL_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data-raw '{"name":"'$TUNNEL_NAME'","tunnel_secret":"'$TUNNEL_SECRET'"}')
 
-    if ! echo "$TUNNEL_RESPONSE" | jq -e '.success == true' > /dev/null; then
-        error "Failed to create tunnel via API."
-        echo "Response: $TUNNEL_RESPONSE"
-        exit 1
+        if ! echo "$TUNNEL_RESPONSE" | jq -e '.success == true' > /dev/null; then
+            error "Failed to create tunnel via API."
+            echo "Response: $TUNNEL_RESPONSE"
+            exit 1
+        fi
+
+        TUNNEL_ID=$(echo "$TUNNEL_RESPONSE" | jq -r '.result.id')
+        log "✅ Tunnel created successfully! Tunnel ID: $TUNNEL_ID"
     fi
-
-    TUNNEL_ID=$(echo "$TUNNEL_RESPONSE" | jq -r '.result.id')
-    log "✅ Tunnel created successfully via API! Tunnel ID: $TUNNEL_ID"
 fi
 
 # --- Cleanup old, inactive tunnels ---
