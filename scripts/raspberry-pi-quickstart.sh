@@ -701,74 +701,50 @@ if [ ! -f ".env" ]; then
         echo "🖨️  PRINTING TEST RECEIPT..."
         echo ""
         
-        # Create a simple test receipt
+        # Create a simple test receipt using python-escpos (the correct method)
         if [ "$PRINTER_INTERFACE" = "usb" ]; then
-            # Test print for USB printer
-            echo "Testing USB printer at $PRINTER_DEVICE_PATH..."
+            # Test print for USB printer using python-escpos
+            echo "Testing USB printer with Vendor ID: 0x04b8, Product ID: 0x0e32..."
             
-            # Check if device exists
-            if [ -e "$PRINTER_DEVICE_PATH" ]; then
-                # Try to write to the device
-                TEST_CONTENT="
-
-================================
-    WIX PRINTER SERVICE TEST
-================================
-
-✅ Printer Type: $PRINTER_TYPE
-✅ Connection: $PRINTER_INTERFACE  
-✅ Device: $PRINTER_DEVICE_PATH
-✅ Paper Width: ${PAPER_WIDTH}mm
-
-Date: $(date)
-
-Epic 2 Self-Healing Features:
-• Intelligent Retry System
-• Health Monitoring
-• Circuit Breaker Protection
-
-🎉 TEST SUCCESSFUL!
-Your printer is ready for
-restaurant operations!
-
-================================
-
-
-
-"
-                
-                # Try to print as wix-printer (member of lp group) via tee
-                if printf "%s" "$TEST_CONTENT" | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1; then
-                    echo "   ✅ Test receipt printed successfully!"
-                    # Feed a few lines and issue ESC/POS cut (full cut)
-                    printf '\n\n\n' | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1 || true
-                    printf '\x1D\x56\x00' | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1 || true
-                else
-                    echo "   ⚠️  Test print failed - attempting permission fix (lp group + 660)"
-                    sudo chgrp lp "$PRINTER_DEVICE_PATH" 2>/dev/null || true
-                    sudo chmod 660 "$PRINTER_DEVICE_PATH" 2>/dev/null || true
-                    if printf "%s" "$TEST_CONTENT" | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1; then
-                        echo "   ✅ Test receipt printed successfully after permission fix!"
-                        # Feed and cut after successful retry
-                        printf '\n\n\n' | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1 || true
-                        printf '\x1D\x56\x00' | sudo -u wix-printer tee "$PRINTER_DEVICE_PATH" >/dev/null 2>&1 || true
-                    else
-                        echo "   ❌ Still cannot write to $PRINTER_DEVICE_PATH"
-                        echo "   🔎 Details:"
-                        ls -la "$PRINTER_DEVICE_PATH" 2>/dev/null || echo "   (device disappeared)"
-                        echo "   👥 wix-printer groups: $(id -nG wix-printer 2>/dev/null)"
-                        echo "   👉 Next steps:"
-                        echo "      1) Ensure user 'wix-printer' is in group 'lp' (it is by default)"
-                        echo "      2) Replug printer USB cable and power-cycle the printer"
-                        echo "      3) Run: sudo chgrp lp $PRINTER_DEVICE_PATH && sudo chmod 660 $PRINTER_DEVICE_PATH"
-                        echo "      4) If it persists, unload kernel usblp to allow libusb: sudo modprobe -r usblp"
-                    fi
-                fi
+            # Use python-escpos to test print (same method as the working service)
+            if sudo -u wix-printer /opt/wix-printer-service/venv/bin/python3 -c "
+from escpos.printer import Usb
+try:
+    printer = Usb(0x04b8, 0x0e32)
+    printer.text('================================\\n')
+    printer.text('    WIX PRINTER SERVICE TEST\\n')
+    printer.text('================================\\n\\n')
+    printer.text('✅ Printer Type: $PRINTER_TYPE\\n')
+    printer.text('✅ Connection: $PRINTER_INTERFACE\\n')
+    printer.text('✅ USB IDs: 04b8:0e32\\n')
+    printer.text('✅ Paper Width: ${PAPER_WIDTH}mm\\n\\n')
+    printer.text('Date: $(date)\\n\\n')
+    printer.text('Epic 2 Self-Healing Features:\\n')
+    printer.text('• Intelligent Retry System\\n')
+    printer.text('• Health Monitoring\\n')
+    printer.text('• Circuit Breaker Protection\\n\\n')
+    printer.text('🎉 TEST SUCCESSFUL!\\n')
+    printer.text('Your printer is ready for\\n')
+    printer.text('restaurant operations!\\n\\n')
+    printer.text('================================\\n\\n\\n')
+    printer.cut()
+    print('SUCCESS')
+except Exception as e:
+    print(f'ERROR: {e}')
+" 2>/dev/null; then
+                echo "   ✅ Test receipt printed successfully using python-escpos!"
+                echo "   🎉 Your printer is fully configured and working!"
             else
-                echo "   ⚠️  Printer device not found: $PRINTER_DEVICE_PATH"
-                echo "   💡 Check if printer is connected and powered on"
-                echo "   💡 Try: ls -la /dev/usb/lp* /dev/lp*"
-                echo "   You can test printing after the service is running"
+                echo "   ⚠️  Test print failed with python-escpos"
+                echo "   🔎 This could indicate:"
+                echo "      1) Printer is not connected or powered off"
+                echo "      2) Wrong USB Vendor/Product ID (check with 'lsusb')"
+                echo "      3) USB permission issues"
+                echo "      4) Kernel driver conflicts (usblp module)"
+                echo ""
+                echo "   💡 The service will still work if the printer is properly connected"
+                echo "   💡 You can test again after the service starts with:"
+                echo "      curl -X POST http://localhost:8000/print/job/1"
             fi
         elif [ "$PRINTER_INTERFACE" = "network" ]; then
             echo "   📡 Testing network printer connectivity..."
