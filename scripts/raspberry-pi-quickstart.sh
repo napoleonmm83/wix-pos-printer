@@ -1328,30 +1328,30 @@ test_public_url() {
 
 # Function to choose setup method
 choose_setup_method() {
-    echo "🌐 PUBLIC URL SETUP METHOD:"
-    echo "=========================================="
-    echo ""
-    echo "Choose the best method for your network setup:"
-    echo ""
-    echo "1️⃣ CLOUDFLARE TUNNEL (RECOMMENDED) ⭐"
-    echo "   ✅ No static IP required"
-    echo "   ✅ No router configuration needed"
-    echo "   ✅ Automatic SSL certificates"
-    echo "   ✅ Built-in DDoS protection"
-    echo "   ✅ Works behind any firewall/NAT"
-    echo ""
-    echo "2️⃣ DYNAMIC DNS + PORT FORWARDING"
-    echo "   ✅ Works with dynamic IP addresses"
-    echo "   ⚠️  Requires router port forwarding"
-    echo "   ✅ Multiple DDNS providers supported"
-    echo "   ✅ Traditional setup method"
-    echo ""
-    echo "3️⃣ STATIC IP SETUP"
-    echo "   ⚠️  Requires static IP address"
-    echo "   ⚠️  Requires router port forwarding"
-    echo "   ✅ Most direct method"
-    echo "   ✅ Full control over configuration"
-    echo ""
+    echo "🌐 PUBLIC URL SETUP METHOD:" >&2
+    echo "==========================================" >&2
+    echo "" >&2
+    echo "Choose the best method for your network setup:" >&2
+    echo "" >&2
+    echo "1️⃣ CLOUDFLARE TUNNEL (RECOMMENDED) ⭐" >&2
+    echo "   ✅ No static IP required" >&2
+    echo "   ✅ No router configuration needed" >&2
+    echo "   ✅ Automatic SSL certificates" >&2
+    echo "   ✅ Built-in DDoS protection" >&2
+    echo "   ✅ Works behind any firewall/NAT" >&2
+    echo "" >&2
+    echo "2️⃣ DYNAMIC DNS + PORT FORWARDING" >&2
+    echo "   ✅ Works with dynamic IP addresses" >&2
+    echo "   ⚠️  Requires router port forwarding" >&2
+    echo "   ✅ Multiple DDNS providers supported" >&2
+    echo "   ✅ Traditional setup method" >&2
+    echo "" >&2
+    echo "3️⃣ STATIC IP SETUP" >&2
+    echo "   ⚠️  Requires static IP address" >&2
+    echo "   ⚠️  Requires router port forwarding" >&2
+    echo "   ✅ Most direct method" >&2
+    echo "   ✅ Full control over configuration" >&2
+    echo "" >&2
     
     local method_choice
     while true; do
@@ -1362,7 +1362,7 @@ choose_setup_method() {
                 return 0
                 ;;
             *)
-                echo "❌ Please enter 1, 2, or 3"
+                echo "❌ Please enter 1, 2, or 3" >&2
                 ;;
         esac
     done
