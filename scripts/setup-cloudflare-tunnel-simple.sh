@@ -337,7 +337,7 @@ TOKEN_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/user/toke
     -H "X-Auth-Email: $CF_EMAIL" \
     -H "X-Auth-Key: $CF_GLOBAL_KEY" \
     -H "Content-Type: application/json" \
-    --data "$JSON_PAYLOAD")
+    --data-raw "$JSON_PAYLOAD")
 
 if echo "$TOKEN_RESPONSE" | grep -q '"success":true'; then
     CF_API_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"value":"[^"]*' | cut -d'"' -f4)
