@@ -183,6 +183,31 @@ class Database:
         except sqlite3.Error as e:
             logger.error(f"Error retrieving order {order_id}: {e}")
             return None
+
+    def get_order_by_wix_id(self, wix_order_id: str) -> Optional[Order]:
+        """
+        Retrieve an order by its Wix Order ID.
+
+        Args:
+            wix_order_id: Wix Order ID to retrieve
+
+        Returns:
+            Order instance or None if not found
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT * FROM orders WHERE wix_order_id = ?", (wix_order_id,)
+                )
+                row = cursor.fetchone()
+
+                if row:
+                    return self._row_to_order(row)
+                return None
+
+        except sqlite3.Error as e:
+            logger.error(f"Error retrieving order by Wix ID {wix_order_id}: {e}")
+            return None
     
     def get_orders_by_status(self, status: OrderStatus) -> List[Order]:
         """

@@ -419,3 +419,7 @@ class OrderService:
             List of Order instances
         """
         return self.database.get_orders_by_status(status)
+
+    def order_exists(self, wix_order_id: str) -> bool:
+        """Check if an order with the given Wix Order ID already exists."""
+        return self.database.get_order_by_wix_id(wix_order_id) is not None

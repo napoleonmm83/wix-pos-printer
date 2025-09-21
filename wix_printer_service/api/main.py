@@ -20,6 +20,46 @@ from ..connectivity_monitor import ConnectivityMonitor, ConnectivityEvent
 from ..offline_queue import OfflineQueueManager
 from ..webhook_validator import get_webhook_validator
 
+# --- Background Tasks ---
+POLLING_INTERVAL = 30  # seconds
+
+async def poll_for_new_orders():
+    """Periodically polls the Wix API for new orders."""
+    logger.info(f"Starting background polling task every {POLLING_INTERVAL} seconds.")
+    wix_client = get_wix_client()
+    order_service = get_order_service()
+    print_manager = get_print_manager()
+
+    if not all([wix_client, order_service, print_manager]):
+        logger.error("Polling task cannot start: one or more services are not configured.")
+        return
+
+    while True:
+        try:
+            logger.info("Polling task running...")
+            recent_orders = wix_client.get_recent_orders(minutes_ago=5)
+            
+            if recent_orders:
+                new_orders_found = 0
+                for order_data in recent_orders:
+                    wix_order_id = order_data.get('id')
+                    if wix_order_id and not order_service.order_exists(wix_order_id):
+                        logger.info(f"Polling found new order: {wix_order_id}")
+                        new_orders_found += 1
+                        # Ingest the order and create print jobs
+                        order = order_service.ingest_order_from_api(order_data)
+                        if order:
+                            print_manager.create_print_jobs_for_order(order.id)
+                
+                if new_orders_found == 0:
+                    logger.info("Polling complete. No new orders found.")
+
+        except Exception as e:
+            logger.error(f"Error during polling task: {e}")
+        
+        # Wait for the next interval
+        await asyncio.sleep(POLLING_INTERVAL)
+
 logger = logging.getLogger(__name__)
 
 # Global instances
@@ -38,6 +78,21 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Tasks to run on application startup."""
+    # Initialize all services
+    get_database()
+    get_order_service()
+    get_wix_client()
+    get_printer_client()
+    get_connectivity_monitor()
+    get_offline_queue()
+    get_print_manager()
+    
+    # Start the background polling task
+    asyncio.create_task(poll_for_new_orders())
 
 # Add security middleware
 app.add_middleware(
