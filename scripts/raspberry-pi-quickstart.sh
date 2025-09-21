@@ -1423,8 +1423,9 @@ setup_public_url_with_retry() {
         log "🚀 Starting $SETUP_SCRIPT..."
         echo ""
         
-        # Run the setup script with explicit path
-        if "$PUBLIC_URL_SCRIPT"; then
+        # Run the setup script explicitly with bash (does not require +x permission)
+        echo "➡️  Executing: bash \"$PUBLIC_URL_SCRIPT\""
+        if bash "$PUBLIC_URL_SCRIPT"; then
             echo ""
             echo "✅ Public URL setup completed!"
             echo ""
