@@ -358,39 +358,55 @@ else
     exit 1
 fi
 
-# Authenticate cloudflared
-log "🔐 Authenticating cloudflared..."
+# Get Account ID for subsequent API calls
+log "🔍 Getting Cloudflare Account ID..."
+ACCOUNT_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts" \
+    -H "Authorization: Bearer $CF_API_TOKEN" \
+    -H "Content-Type: application/json")
 
-# Create a temporary credentials file for cloudflared
-TEMP_CREDS=$(mktemp)
-cat > "$TEMP_CREDS" <<EOF
-{
-    "api_token": "$CF_API_TOKEN"
-}
-EOF
+ACCOUNT_ID=$(echo "$ACCOUNT_RESPONSE" | jq -r '.result[0].id')
 
-export TUNNEL_TOKEN="$CF_API_TOKEN"
+if [[ -z "$ACCOUNT_ID" ]]; then
+    error "Could not determine Cloudflare Account ID from API token."
+    exit 1
+fi
+log "✅ Found Account ID: $ACCOUNT_ID"
 
-# Create tunnel using cloudflared
+# Create tunnel via API
 echo ""
-log "🚇 Creating Cloudflare Tunnel..."
-
+log "🚇 Creating Cloudflare Tunnel via API..."
 TUNNEL_NAME="wix-printer-$(date +%s)"
 log "Tunnel name: $TUNNEL_NAME"
 
-# Use cloudflared to create tunnel
-if cloudflared tunnel login --api-token "$CF_API_TOKEN" 2>/dev/null || true; then
-    log "✅ Cloudflared authenticated"
-else
-    warn "Direct authentication failed, trying alternative method"
-fi
+# The tunnel secret is created locally and passed to the API
+TUNNEL_SECRET=$(openssl rand -base64 32)
 
-if cloudflared tunnel create "$TUNNEL_NAME"; then
-    log "✅ Tunnel created successfully"
-else
-    error "Failed to create tunnel with cloudflared"
+TUNNEL_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
+    -H "Authorization: Bearer $CF_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    --data-raw '{"name":"'$TUNNEL_NAME'","tunnel_secret":"'$TUNNEL_SECRET'"}')
+
+if ! echo "$TUNNEL_RESPONSE" | jq -e '.success == true' > /dev/null; then
+    error "Failed to create tunnel via API."
+    echo "Response: $TUNNEL_RESPONSE"
     exit 1
 fi
+
+TUNNEL_ID=$(echo "$TUNNEL_RESPONSE" | jq -r '.result.id')
+log "✅ Tunnel created successfully via API! Tunnel ID: $TUNNEL_ID"
+
+# Create the credentials file for the cloudflared daemon
+log "✍️ Creating tunnel credentials file..."
+mkdir -p ~/.cloudflared
+cat > ~/.cloudflared/"$TUNNEL_ID".json << EOF
+{
+  "AccountTag": "$ACCOUNT_ID",
+  "TunnelID": "$TUNNEL_ID",
+  "TunnelSecret": "$TUNNEL_SECRET"
+}
+EOF
+chmod 600 ~/.cloudflared/"$TUNNEL_ID".json
+log "✅ Credentials file created."
 
 # Get tunnel ID
 TUNNEL_ID=$(cloudflared tunnel list | grep "$TUNNEL_NAME" | awk '{print $1}')
