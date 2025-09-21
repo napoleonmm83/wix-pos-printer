@@ -115,7 +115,7 @@ log "💡 TIP: Use '$0 --help' for all available options"
 # Phase 1: System Update
 log "📦 Phase 1: Updating system packages..."
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y git python3-pip python3-venv sqlite3 curl cups cups-client usbutils netcat-openbsd libusb-1.0-0-dev
+sudo apt install -y git python3-pip python3-venv sqlite3 curl cups cups-client usbutils netcat-openbsd libusb-1.0-0-dev dnsutils
 
 # Verify Python version
 PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
@@ -1399,9 +1399,9 @@ test_public_url() {
     while [ $attempt -le $max_attempts ]; do
         echo "   Attempt $attempt/$max_attempts: Testing https://$domain/health"
         
-        # Test DNS resolution first
-        if ! nslookup "$domain" >/dev/null 2>&1; then
-            echo "   ❌ DNS resolution failed for $domain"
+        # Test DNS resolution first by querying a public DNS server directly to bypass local cache
+        if ! dig +short @1.1.1.1 "$domain" | grep -q . ; then
+            echo "   ❌ DNS resolution failed for $domain (checked against 1.1.1.1)"
             if [ $attempt -eq $max_attempts ]; then
                 return 1
             fi
