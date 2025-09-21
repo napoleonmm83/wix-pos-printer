@@ -296,45 +296,41 @@ fi
 
 log "✅ Found required permission IDs successfully."
 
+# Construct the JSON payload safely using jq
+TOKEN_NAME="Wix Printer Tunnel - $(date +%Y%m%d-%H%M%S)"
+NOT_BEFORE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+EXPIRES_ON=$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ)
+
+JSON_PAYLOAD=$(jq -n \
+  --arg name "$TOKEN_NAME" \
+  --arg nb "$NOT_BEFORE" \
+  --arg eo "$EXPIRES_ON" \
+  --arg zrid "$ZONE_READ_ID" \
+  --arg dwid "$DNS_WRITE_ID" \
+  --arg twid "$TUNNEL_WRITE_ID" \
+  '{
+    "name": $name,
+    "policies": [
+      {
+        "effect": "allow",
+        "resources": {"com.cloudflare.api.account.zone.*": "*"},
+        "permission_groups": [{"id": $zrid}, {"id": $dwid}]
+      },
+      {
+        "effect": "allow",
+        "resources": {"com.cloudflare.api.account.*": "*"},
+        "permission_groups": [{"id": $twid}]
+      }
+    ],
+    "not_before": $nb,
+    "expires_on": $eo
+  }')
+
 TOKEN_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/user/tokens" \
     -H "X-Auth-Email: $CF_EMAIL" \
     -H "X-Auth-Key: $CF_GLOBAL_KEY" \
     -H "Content-Type: application/json" \
-    --data-binary @- <<EOF
-{
-    "name": "Wix Printer Tunnel - $(date +%Y%m%d-%H%M%S)",
-    "policies": [
-        {
-            "effect": "allow",
-            "resources": {
-                "com.cloudflare.api.account.zone.*": "*"
-            },
-            "permission_groups": [
-                {
-                    "id": "$ZONE_READ_ID"
-                },
-                {
-                    "id": "$DNS_WRITE_ID"
-                }
-            ]
-        },
-        {
-            "effect": "allow",
-            "resources": {
-                "com.cloudflare.api.account.*": "*"
-            },
-            "permission_groups": [
-                {
-                    "id": "$TUNNEL_WRITE_ID"
-                }
-            ]
-        }
-    ],
-    "not_before": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-    "expires_on": "$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ)"
-}
-EOF
-)
+    --data-raw "$JSON_PAYLOAD")
 
 if echo "$TOKEN_RESPONSE" | grep -q '"success":true'; then
     CF_API_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"value":"[^"]*' | cut -d'"' -f4)
