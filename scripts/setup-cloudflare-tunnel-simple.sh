@@ -281,13 +281,15 @@ if ! echo "$PERMISSIONS_JSON" | grep -q '"success":true'; then
 fi
 
 # Extract IDs using jq (now guaranteed to be installed)
+ACCOUNT_SETTINGS_READ_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="Account Settings Read") | .id')
 ZONE_READ_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="Zone Read") | .id')
 DNS_WRITE_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="DNS Write") | .id')
 # Use a more specific 'contains' search to ensure only one ID is returned.
 TUNNEL_WRITE_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name | contains("Tunnel") and contains("Write")) | .id')
 
-if [[ -z "$ZONE_READ_ID" || -z "$DNS_WRITE_ID" || -z "$TUNNEL_WRITE_ID" ]]; then
+if [[ -z "$ACCOUNT_SETTINGS_READ_ID" || -z "$ZONE_READ_ID" || -z "$DNS_WRITE_ID" || -z "$TUNNEL_WRITE_ID" ]]; then
     error "Could not dynamically determine required permission IDs."
+    echo "Account Settings Read ID: $ACCOUNT_SETTINGS_READ_ID"
     echo "Zone Read ID: $ZONE_READ_ID"
     echo "DNS Write ID: $DNS_WRITE_ID"
     echo "Tunnel Write ID: $TUNNEL_WRITE_ID"
@@ -305,6 +307,7 @@ JSON_PAYLOAD=$(jq -n \
   --arg name "$TOKEN_NAME" \
   --arg nb "$NOT_BEFORE" \
   --arg eo "$EXPIRES_ON" \
+  --arg asrid "$ACCOUNT_SETTINGS_READ_ID" \
   --arg zrid "$ZONE_READ_ID" \
   --arg dwid "$DNS_WRITE_ID" \
   --arg twid "$TUNNEL_WRITE_ID" \
@@ -319,7 +322,7 @@ JSON_PAYLOAD=$(jq -n \
       {
         "effect": "allow",
         "resources": {"com.cloudflare.api.account.*": "*"},
-        "permission_groups": [{"id": $twid}]
+        "permission_groups": [{"id": $asrid}, {"id": $twid}]
       }
     ],
     "not_before": $nb,
