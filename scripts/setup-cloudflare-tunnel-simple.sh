@@ -168,6 +168,17 @@ done
 
 log "✅ Credentials collected"
 
+# Install dependencies (jq)
+echo ""
+log "📦 Installing dependencies (jq)..."
+if ! command -v jq >/dev/null 2>&1; then
+    sudo apt-get update
+    sudo apt-get install -y jq
+    log "✅ jq installed successfully."
+else
+    log "jq is already installed."
+fi
+
 # Install cloudflared
 echo ""
 log "📦 Installing cloudflared..."
@@ -269,16 +280,10 @@ if ! echo "$PERMISSIONS_JSON" | grep -q '"success":true'; then
     exit 1
 fi
 
-# Extract IDs using jq if available, otherwise fallback to grep/awk
-if command -v jq >/dev/null 2>&1; then
-    ZONE_READ_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="Zone Read") | .id')
-    DNS_WRITE_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="DNS Write") | .id')
-    TUNNEL_WRITE_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="Tunnel Write") | .id')
-else
-    ZONE_READ_ID=$(echo "$PERMISSIONS_JSON" | grep '"name":"Zone Read"' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
-    DNS_WRITE_ID=$(echo "$PERMISSIONS_JSON" | grep '"name":"DNS Write"' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
-    TUNNEL_WRITE_ID=$(echo "$PERMISSIONS_JSON" | grep '"name":"Tunnel Write"' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
-fi
+# Extract IDs using jq (now guaranteed to be installed)
+ZONE_READ_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="Zone Read") | .id')
+DNS_WRITE_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="DNS Write") | .id')
+TUNNEL_WRITE_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="Tunnel Write") | .id')
 
 if [[ -z "$ZONE_READ_ID" || -z "$DNS_WRITE_ID" || -z "$TUNNEL_WRITE_ID" ]]; then
     error "Could not dynamically determine required permission IDs."
