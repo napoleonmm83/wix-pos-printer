@@ -23,11 +23,28 @@ An intelligent, autonomous printing service that runs on Raspberry Pi and automa
 
 ## 🚀 **Quick Start**
 
-### **Raspberry Pi Setup (Recommended)**
+### **🍓 One-Command Setup (Recommended)**
 ```bash
 # 1. Clone repository
 git clone https://github.com/napoleonmm83/wix-pos-printer.git
 cd wix-pos-printer
+
+# 2. Run one-command setup (makes scripts executable automatically)
+chmod +x setup.sh && ./setup.sh
+```
+
+### **🌐 Public URL Options Available:**
+- **Cloudflare Tunnel** (no static IP needed) ⭐
+- **Dynamic DNS** (works with changing IPs)  
+- **Static IP Setup** (traditional method)
+
+### **Manual Script Setup (Alternative)**
+```bash
+# Make scripts executable first
+chmod +x scripts/*.sh
+
+# Then run main setup
+./scripts/raspberry-pi-quickstart.sh
 
 # 2. Run interactive setup wizard
 chmod +x scripts/raspberry-pi-quickstart.sh

@@ -1410,8 +1410,9 @@ setup_public_url_with_retry() {
             return 1
         fi
         
-        # Make script executable
-        chmod +x "$PUBLIC_URL_SCRIPT"
+        # Make all scripts in the directory executable (user-friendly)
+        log "🔧 Making scripts executable..."
+        chmod +x "$SCRIPT_DIR"/*.sh
         
         # Run the setup script
         if bash "$PUBLIC_URL_SCRIPT"; then
