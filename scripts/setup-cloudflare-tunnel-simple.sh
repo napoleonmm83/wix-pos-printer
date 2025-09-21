@@ -296,8 +296,11 @@ fi
 
 log "✅ Found required permission IDs successfully."
 
-# Construct the JSON payload with dynamic IDs
-JSON_PAYLOAD=$(cat <<EOF
+TOKEN_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/user/tokens" \
+    -H "X-Auth-Email: $CF_EMAIL" \
+    -H "X-Auth-Key: $CF_GLOBAL_KEY" \
+    -H "Content-Type: application/json" \
+    --data-binary @- <<EOF
 {
     "name": "Wix Printer Tunnel - $(date +%Y%m%d-%H%M%S)",
     "policies": [
@@ -332,12 +335,6 @@ JSON_PAYLOAD=$(cat <<EOF
 }
 EOF
 )
-
-TOKEN_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/user/tokens" \
-    -H "X-Auth-Email: $CF_EMAIL" \
-    -H "X-Auth-Key: $CF_GLOBAL_KEY" \
-    -H "Content-Type: application/json" \
-    --data-raw "$JSON_PAYLOAD")
 
 if echo "$TOKEN_RESPONSE" | grep -q '"success":true'; then
     CF_API_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"value":"[^"]*' | cut -d'"' -f4)
