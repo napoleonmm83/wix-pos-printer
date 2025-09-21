@@ -1295,25 +1295,36 @@ setup_python_app_service() {
         return 1
     fi
 
-    # Ask for Wix Secret Key and create .env file
+    # Generate and ask for Wix Secret Key
     log ""
     log "🔑 WIX WEBHOOK SECRET KEY SETUP:"
     log "----------------------------------------"
-    log "Your Wix Secret Key is required to verify incoming webhooks."
-    log "This is separate from your main Wix API Key."
-    log "You can find this in your Wix Dashboard under 'Webhooks'."
-    
+    log "A secure secret key is needed to ensure that only Wix can send you webhooks."
+    log "We've generated a secure key for you."
+    log ""
+
+    # Generate a 32-character random key
+    local generated_secret
+    generated_secret=$(head /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 32)
+
+    log "✅ Your generated secure key is:"
+    echo -e "${YELLOW}$generated_secret${NC}"
+    log ""
+    log "📋 ACTION REQUIRED:"
+    log "   1. Copy this key."
+    log "   2. Go to your Wix Automations -> HTTP-Anfrage."
+    log "   3. Add a Header with Key 'X-Auth-Token' and this key as the Value."
+    log ""
+
     local wix_secret
-    while true; do
-        echo -n "👉 Enter your Wix Secret Key: "
-        read -s wix_secret # Read silently
-        echo ""
-        if [[ -n "$wix_secret" ]]; then
-            break
-        else
-            warn "The Secret Key cannot be empty."
-        fi
-    done
+    read -p "👉 Press ENTER to use this generated key, or enter your own key now: " user_input
+    if [[ -n "$user_input" ]]; then
+        wix_secret="$user_input"
+        log "✅ Using your custom provided key."
+    else
+        wix_secret="$generated_secret"
+        log "✅ Using the generated secure key."
+    fi
 
     # Create .env file in the project's root directory, owned by the service user
     # We append to the .env file in case it was already created
