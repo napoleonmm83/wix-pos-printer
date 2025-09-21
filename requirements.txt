@@ -8,3 +8,4 @@ python-dotenv
 pytest
 httpx
 jinja2
+python-multipart
