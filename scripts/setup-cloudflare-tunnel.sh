@@ -5,7 +5,10 @@
 # Version: 1.0
 # Date: 2025-09-21
 
-set -e
+set -e  # Exit on any error
+
+# Debug mode - uncomment for troubleshooting
+# set -x
 
 # Colors for output
 RED='\033[0;31m'

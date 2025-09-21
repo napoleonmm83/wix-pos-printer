@@ -1387,7 +1387,7 @@ setup_public_url_with_retry() {
             1)
                 echo "🚀 STARTING CLOUDFLARE TUNNEL SETUP (Attempt $setup_attempt/$max_setup_attempts)"
                 echo "================================================================="
-                SETUP_SCRIPT="setup-cloudflare-tunnel.sh"
+                SETUP_SCRIPT="setup-cloudflare-tunnel-simple.sh"
                 ;;
             2)
                 echo "🚀 STARTING DYNAMIC DNS SETUP (Attempt $setup_attempt/$max_setup_attempts)"
