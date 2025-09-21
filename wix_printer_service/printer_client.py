@@ -72,7 +72,7 @@ class PrinterClient:
             return int(default_hex, 16)
 
         self.usb_vendor_id = _parse_usb('PRINTER_USB_VENDOR_ID', '0x04b8')  # Epson
-        self.usb_product_id = _parse_usb('PRINTER_USB_PRODUCT_ID', '0x0202')  # TM-m30III
+        self.usb_product_id = _parse_usb('PRINTER_USB_PRODUCT_ID', '0x0e32')  # TM-m30III
 
         # Network configuration (support wizard names)
         self.network_host = os.getenv('PRINTER_NETWORK_HOST') or os.getenv('PRINTER_IP', '192.168.1.100')

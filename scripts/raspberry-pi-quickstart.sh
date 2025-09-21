@@ -138,7 +138,7 @@ sudo usermod -a -G lp wix-printer
 log "🔩 Phase 3: Setting up hardware permissions..."
 
 UDEV_RULE_FILE="/etc/udev/rules.d/99-wix-printer.rules"
-UDEV_RULE_CONTENT='SUBSYSTEM=="usb", ATTR{idVendor}=="04b8", ATTR{idProduct}=="0202", GROUP="wix-printer", MODE="0666"'
+UDEV_RULE_CONTENT='SUBSYSTEM=="usb", ATTR{idVendor}=="04b8", ATTR{idProduct}=="0e32", GROUP="wix-printer", MODE="0666"'
 
 log "Creating udev rule for USB printer access at $UDEV_RULE_FILE"
 echo "$UDEV_RULE_CONTENT" | sudo tee $UDEV_RULE_FILE > /dev/null
@@ -1041,6 +1041,14 @@ WIX_API_BASE_URL=$WIX_API_BASE_URL
 # Printer Configuration
 PRINTER_TYPE=$PRINTER_TYPE
 PRINTER_INTERFACE=$PRINTER_INTERFACE
+PRINTER_VENDOR_ID=04b8
+PRINTER_PRODUCT_ID=0e32
+
+# USB Printer Configuration (required for USB printers)
+PRINTER_USB_VENDOR_ID=0x04b8
+PRINTER_USB_PRODUCT_ID=0x0e32
+
+# Legacy device path (for compatibility)
 PRINTER_DEVICE_PATH=$PRINTER_DEVICE_PATH
 PAPER_WIDTH=$PAPER_WIDTH
 
