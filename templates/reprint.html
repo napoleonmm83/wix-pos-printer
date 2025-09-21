@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Druck-Wiederholung</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #1c1e21;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #1877f2;
+        }
+        .order-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .order-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        .order-item:last-child {
+            border-bottom: none;
+        }
+        .order-details {
+            font-size: 16px;
+        }
+        .order-id {
+            font-weight: 600;
+        }
+        .order-time {
+            font-size: 14px;
+            color: #606770;
+        }
+        .reprint-button {
+            background-color: #42b72a;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .reprint-button:hover {
+            background-color: #36a420;
+        }
+        .message {
+            text-align: center;
+            padding: 10px;
+            margin-top: 15px;
+            border-radius: 6px;
+            display: none; /* Hidden by default */
+        }
+        .message.success {
+            background-color: #e9f6ec;
+            color: #36a420;
+        }
+        .message.error {
+            background-color: #fde0e0;
+            color: #eb3434;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bestellung erneut drucken</h1>
+        <div id="message-box" class="message"></div>
+        <ul class="order-list">
+            {% for order in orders %}
+            <li class="order-item">
+                <div class="order-details">
+                    <span class="order-id">Bestell-Nr: {{ order.wix_order_id }}</span><br>
+                    <span class="order-time">{{ order.created_at }}</span>
+                </div>
+                <form action="/reprint" method="post" onsubmit="return handleReprint(event, '{{ order.wix_order_id }}')">
+                    <input type="hidden" name="order_id" value="{{ order.wix_order_id }}">
+                    <button type="submit" class="reprint-button">Erneut Drucken</button>
+                </form>
+            </li>
+            {% else %}
+            <li class="order-item">Keine Bestellungen gefunden.</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <script>
+        async function handleReprint(event, orderId) {
+            event.preventDefault();
+            const form = event.target;
+            const button = form.querySelector('button');
+            const messageBox = document.getElementById('message-box');
+
+            button.disabled = true;
+            button.textContent = 'Drucke...';
+
+            try {
+                const response = await fetch('/reprint', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `order_id=${orderId}`
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(`Druckauftrag für Bestellung ${orderId} erfolgreich gesendet.`, 'success');
+                } else {
+                    showMessage(`Fehler beim Drucken: ${result.detail || 'Unbekannter Fehler'}`, 'error');
+                }
+            } catch (error) {
+                showMessage('Netzwerkfehler oder Server nicht erreichbar.', 'error');
+            }
+
+            setTimeout(() => {
+                button.disabled = false;
+                button.textContent = 'Erneut Drucken';
+            }, 2000);
+
+            return false;
+        }
+
+        function showMessage(text, type) {
+            const messageBox = document.getElementById('message-box');
+            messageBox.textContent = text;
+            messageBox.className = `message ${type}`;
+            messageBox.style.display = 'block';
+
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
