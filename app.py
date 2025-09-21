@@ -30,10 +30,6 @@ app = FastAPI()
 # You can also use an environment variable for better security
 SECRET_KEY = os.environ.get("WIX_SECRET_KEY", "YOUR_WIX_WEBHOOK_SECRET_KEY")
 
-def generate_signature(secret, body):
-    """Generates the expected HMAC-SHA256 signature for a given request body."""
-    hmac_digest = hmac.new(secret.encode('utf-8'), body, hashlib.sha256).digest()
-    return base64.b64encode(hmac_digest).decode('utf-8')
 
 # --- Webhook Endpoint ---
 @app.post('/webhook/orders')
@@ -41,26 +37,24 @@ async def handle_webhook(request: Request):
     """Receives, validates, and processes webhook events from Wix."""
     logging.info("Webhook endpoint hit. Starting validation...")
     
-    # 1. Get Signature and Body
-    signature = request.headers.get('x-wix-signature')
+    # 1. Get Auth Token and Body
+    auth_token = request.headers.get('X-Auth-Token')
     raw_body = await request.body()
 
     # Log incoming data for debugging
     logging.info(f"Received Headers: {request.headers}")
     logging.info(f"Received Body: {raw_body.decode('utf-8')}")
 
-    # 2. Validate Signature
-    if not signature:
-        logging.warning("Request is missing 'x-wix-signature' header.")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing signature")
+    # 2. Validate Auth Token
+    if not auth_token:
+        logging.warning("Request is missing 'X-Auth-Token' header.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing auth token")
 
-    expected_signature = generate_signature(SECRET_KEY, raw_body)
+    if not hmac.compare_digest(auth_token, SECRET_KEY):
+        logging.error("Invalid auth token received.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid auth token")
 
-    if not hmac.compare_digest(signature, expected_signature):
-        logging.error(f"Invalid signature. Expected: '{expected_signature}', Got: '{signature}'")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
-
-    logging.info("Signature validation successful!")
+    logging.info("Auth token validation successful!")
 
     # 3. Process the validated payload
     try:
