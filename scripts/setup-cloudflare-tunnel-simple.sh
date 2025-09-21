@@ -669,8 +669,10 @@ echo "🌐 WIX WEBHOOK CONFIGURATION:"
 echo "   Configure your Wix webhook URL as:"
 echo "   👉 https://$FULL_DOMAIN/webhook/orders"
 echo ""
-echo "✅ Your printer service is now accessible from anywhere!"
-echo "   No router configuration or static IP needed!"
-echo ""
+log "✅ Your printer service is now accessible from anywhere!"
+log "   No router configuration or static IP needed!"
 
-log "Cloudflare Tunnel setup completed successfully!"
+log "Cloudflare Tunnel setup completed successfully!" >&2
+
+# Output the full domain so the parent script can capture it
+echo "$FULL_DOMAIN"

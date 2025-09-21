@@ -1488,137 +1488,138 @@ choose_setup_method() {
 setup_public_url_with_retry() {
     local max_setup_attempts=3
     local setup_attempt=1
-    
+
     # Choose setup method
-    local setup_method=$(choose_setup_method)
-    
+    local setup_method
+    setup_method=$(choose_setup_method)
+
     # Determine which script to run based on user selection
     local SETUP_SCRIPT
     case $setup_method in
-        1)
-            SETUP_SCRIPT="setup-cloudflare-tunnel-simple.sh"
-            ;;
-        2)
-            SETUP_SCRIPT="setup-dynamic-dns.sh"
-            ;;
-        3)
-            SETUP_SCRIPT="setup-public-access.sh"
-            ;;
-        *)
-            error "Invalid setup method selected: $setup_method"
-            return 1
-            ;;
+    1)
+        SETUP_SCRIPT="setup-cloudflare-tunnel-simple.sh"
+        ;;
+    2)
+        SETUP_SCRIPT="setup-dynamic-dns.sh"
+        ;;
+    3)
+        SETUP_SCRIPT="setup-public-access.sh"
+        ;;
+    *)
+        error "Invalid setup method selected: $setup_method"
+        return 1
+        ;;
     esac
 
     while [ $setup_attempt -le $max_setup_attempts ]; do
         echo ""
         case $setup_method in
-            1)
-                echo "🚀 STARTING CLOUDFLARE TUNNEL SETUP (Attempt $setup_attempt/$max_setup_attempts)"
-                echo "================================================================="
-                ;;
-            2)
-                echo "🚀 STARTING DYNAMIC DNS SETUP (Attempt $setup_attempt/$max_setup_attempts)"
-                echo "=========================================================="
-                ;;
-            3)
-                echo "🚀 STARTING STATIC IP SETUP (Attempt $setup_attempt/$max_setup_attempts)"
-                echo "========================================================"
-                ;;
+        1)
+            echo "🚀 STARTING CLOUDFLARE TUNNEL SETUP (Attempt $setup_attempt/$max_setup_attempts)"
+            echo "================================================================="
+            ;;
+        2)
+            echo "🚀 STARTING DYNAMIC DNS SETUP (Attempt $setup_attempt/$max_setup_attempts)"
+            echo "========================================================="
+            ;;
+        3)
+            echo "🚀 STARTING STATIC IP SETUP (Attempt $setup_attempt/$max_setup_attempts)"
+            echo "======================================================="
+            ;;
         esac
-        
+
         # Run the appropriate setup script
         SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         PUBLIC_URL_SCRIPT="$SCRIPT_DIR/$SETUP_SCRIPT"
-        
-        log "🔍 Debug: Script directory: $SCRIPT_DIR"
-        log "🔍 Debug: Looking for script: $PUBLIC_URL_SCRIPT"
-        
+
         if [ ! -f "$PUBLIC_URL_SCRIPT" ]; then
             error "Setup script not found: $PUBLIC_URL_SCRIPT"
-            error "Available scripts in $SCRIPT_DIR:"
-            ls -la "$SCRIPT_DIR"/*.sh || true
             return 1
         fi
-        
-        # Make all scripts in the directory executable (user-friendly)
-        log "🔧 Making scripts executable..."
+
+        # Make all scripts in the directory executable
         chmod +x "$SCRIPT_DIR"/*.sh
-        
-        log "✅ Script found and made executable: $PUBLIC_URL_SCRIPT"
+
         log "🚀 Starting $SETUP_SCRIPT..."
         echo ""
-        
-        # Run the setup script explicitly with bash (does not require +x permission)
-        echo "➡️  Executing: bash \"$PUBLIC_URL_SCRIPT\""
-        if bash "$PUBLIC_URL_SCRIPT"; then
+
+        # Run the setup script and capture its stdout (which should be the domain name)
+        DOMAIN_TO_TEST=$(bash "$PUBLIC_URL_SCRIPT")
+        local exit_code=$?
+
+        if [[ $exit_code -eq 0 && -n "$DOMAIN_TO_TEST" ]]; then
+            log "Public URL setup script completed. Verifying..."
             echo ""
-            echo "✅ Public URL setup completed!"
-            echo ""
-            
-            # Ask for domain to test
+
+            # Automatically verify the returned domain
             echo "🔍 VERIFICATION PHASE:"
-            echo "   Let's verify that your public URL is working correctly."
+            echo "   Automatically verifying public URL: $DOMAIN_TO_TEST"
             echo ""
-            echo -n "   👉 Enter your domain name for testing (e.g., printer.example.com): "
-            read DOMAIN_TO_TEST
-            
-            if [ -n "$DOMAIN_TO_TEST" ]; then
+
+            if test_public_url "$DOMAIN_TO_TEST"; then
                 echo ""
-                if test_public_url "$DOMAIN_TO_TEST"; then
-                    echo ""
-                    echo "🎉 SUCCESS! Your public URL is fully functional!"
-                    echo ""
-                    echo "📋 WEBHOOK CONFIGURATION:"
-                    echo "   Configure your Wix webhook URL as:"
-                    echo "   👉 https://$DOMAIN_TO_TEST/webhook/orders"
-                    echo ""
-                    echo "🔧 MANAGEMENT URLS:"
-                    echo "   • Health Status: https://$DOMAIN_TO_TEST/health"
-                    echo "   • Public URL Status: https://$DOMAIN_TO_TEST/public-url/status"
-                    echo "   • API Documentation: https://$DOMAIN_TO_TEST/docs"
-                    echo ""
-                    return 0
-                else
-                    echo ""
-                    echo "❌ PUBLIC URL VERIFICATION FAILED!"
-                    echo ""
-                    echo "🔍 POSSIBLE ISSUES:"
-                    echo "   • DNS not fully propagated yet (wait 5-30 minutes)"
-                    echo "   • Router port forwarding not configured correctly"
-                    echo "   • SSL certificate not installed properly"
-                    echo "   • Firewall blocking connections"
-                    echo ""
-                    
-                    if [ $setup_attempt -lt $max_setup_attempts ]; then
-                        echo "❓ RETRY OPTIONS:"
-                        echo "   1) Retry setup immediately"
-                        echo "   2) Wait 5 minutes and retry"
-                        echo "   3) Skip and continue (setup manually later)"
-                        echo ""
-                        
-                        while true; do
-                            read -p "   👉 Choose option (1-3): " retry_choice
-                            case $retry_choice in
-                                1)
-                                    echo "   🔄 Retrying setup immediately..."
-                                    break
-                                    ;;
-                                2)
-                                    echo "   ⏳ Waiting 5 minutes for DNS/SSL propagation..."
-                                    sleep 300
-                                    echo "   🔄 Retrying setup after wait..."
-                                    break
-                                    ;;
-                                3)
-                                    echo "   ⏭️  Skipping public URL setup"
-                                    echo "   💡 You can run it later with: ./scripts/setup-public-access.sh"
-                                    return 0
-                                    ;;
-                                *)
-                                    echo "   ❌ Please enter 1, 2, or 3"
-                                    ;;
-                            esac
+                echo "🎉 SUCCESS! Your public URL is fully functional!"
+                echo ""
+                echo "📋 WEBHOOK CONFIGURATION:"
+                echo "   Configure your Wix webhook URL as:"
+                echo "   👉 https://$DOMAIN_TO_TEST/webhook/orders"
+                echo ""
+                return 0 # Success, exit the function
+            else
+                echo ""
+                echo "❌ PUBLIC URL VERIFICATION FAILED!"
+            fi
+        else
+            echo ""
+            echo "❌ The public URL setup script failed to complete successfully."
+        fi
+
+        # This part is only reached if verification or the script itself fails
+        echo ""
+        echo "🔍 POSSIBLE ISSUES:"
+        echo "   • DNS not fully propagated yet (wait 5-30 minutes)"
+        echo "   • Incorrect Cloudflare credentials or permissions"
+        echo "   • Firewall blocking connections"
+        echo ""
+
+        if [ $setup_attempt -lt $max_setup_attempts ]; then
+            echo "❓ RETRY OPTIONS:"
+            echo "   1) Retry setup immediately"
+            echo "   2) Wait 5 minutes and retry"
+            echo "   3) Skip and continue (setup manually later)"
+            echo ""
+
+            while true; do
+                read -p "   👉 Choose option (1-3): " retry_choice
+                case $retry_choice in
+                1)
+                    echo "   🔄 Retrying setup immediately..."
+                    break
+                    ;;
+                2)
+                    echo "   ⏳ Waiting 5 minutes for DNS/SSL propagation..."
+                    sleep 300
+                    echo "   🔄 Retrying setup after wait..."
+                    break
+                    ;;
+                3)
+                    echo "   ⏭️  Skipping public URL setup"
+                    return 1 # Return failure so the main script knows
+                    ;;
+                *)
+                    echo "   ❌ Please enter 1, 2, or 3"
+                    ;;
+                esac
+            done
+        fi
+
+        ((setup_attempt++))
+    done
+
+    echo ""
+    echo "❌ Public URL setup failed after $max_setup_attempts attempts."
+    return 1
+}
                         done
                     fi
                 fi
