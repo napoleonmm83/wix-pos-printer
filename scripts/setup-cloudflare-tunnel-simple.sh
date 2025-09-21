@@ -326,6 +326,10 @@ JSON_PAYLOAD=$(jq -n \
     "expires_on": $eo
   }')
 
+echo "--- BEGIN JSON PAYLOAD ---"
+echo "$JSON_PAYLOAD"
+echo "--- END JSON PAYLOAD ---"
+
 TOKEN_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/user/tokens" \
     -H "X-Auth-Email: $CF_EMAIL" \
     -H "X-Auth-Key: $CF_GLOBAL_KEY" \
