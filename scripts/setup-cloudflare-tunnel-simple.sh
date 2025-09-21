@@ -256,45 +256,82 @@ fi
 # Create API token for tunnel management
 log "🔑 Creating secure API token for tunnel management..."
 
+# Dynamically fetch permission group IDs
+log "🔍 Fetching latest permission group IDs from Cloudflare..."
+PERMISSIONS_JSON=$(curl -s -X GET "https://api.cloudflare.com/client/v4/user/tokens/permission_groups" \
+    -H "X-Auth-Email: $CF_EMAIL" \
+    -H "X-Auth-Key: $CF_GLOBAL_KEY" \
+    -H "Content-Type: application/json")
+
+if ! echo "$PERMISSIONS_JSON" | grep -q '"success":true'; then
+    error "Failed to fetch permission groups from Cloudflare API."
+    echo "Response: $PERMISSIONS_JSON"
+    exit 1
+fi
+
+# Extract IDs using jq if available, otherwise fallback to grep/awk
+if command -v jq >/dev/null 2>&1; then
+    ZONE_READ_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="Zone Read") | .id')
+    DNS_WRITE_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="DNS Write") | .id')
+    TUNNEL_WRITE_ID=$(echo "$PERMISSIONS_JSON" | jq -r '.result[] | select(.name=="Tunnel Write") | .id')
+else
+    ZONE_READ_ID=$(echo "$PERMISSIONS_JSON" | grep '"name":"Zone Read"' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+    DNS_WRITE_ID=$(echo "$PERMISSIONS_JSON" | grep '"name":"DNS Write"' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+    TUNNEL_WRITE_ID=$(echo "$PERMISSIONS_JSON" | grep '"name":"Tunnel Write"' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+fi
+
+if [[ -z "$ZONE_READ_ID" || -z "$DNS_WRITE_ID" || -z "$TUNNEL_WRITE_ID" ]]; then
+    error "Could not dynamically determine required permission IDs."
+    echo "Zone Read ID: $ZONE_READ_ID"
+    echo "DNS Write ID: $DNS_WRITE_ID"
+    echo "Tunnel Write ID: $TUNNEL_WRITE_ID"
+    exit 1
+fi
+
+log "✅ Found required permission IDs successfully."
+
+# Construct the JSON payload with dynamic IDs
+JSON_PAYLOAD=$(cat <<EOF
+{
+    "name": "Wix Printer Tunnel - $(date +%Y%m%d-%H%M%S)",
+    "policies": [
+        {
+            "effect": "allow",
+            "resources": {
+                "com.cloudflare.api.account.zone.*": "*"
+            },
+            "permission_groups": [
+                {
+                    "id": "$ZONE_READ_ID"
+                },
+                {
+                    "id": "$DNS_WRITE_ID"
+                }
+            ]
+        },
+        {
+            "effect": "allow",
+            "resources": {
+                "com.cloudflare.api.account.*": "*"
+            },
+            "permission_groups": [
+                {
+                    "id": "$TUNNEL_WRITE_ID"
+                }
+            ]
+        }
+    ],
+    "not_before": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+    "expires_on": "$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+)
+
 TOKEN_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/user/tokens" \
     -H "X-Auth-Email: $CF_EMAIL" \
     -H "X-Auth-Key: $CF_GLOBAL_KEY" \
     -H "Content-Type: application/json" \
-    --data '{
-        "name": "Wix Printer Tunnel - '"$(date +%Y%m%d-%H%M%S)"'",
-        "policies": [
-            {
-                "effect": "allow",
-                "resources": {
-                    "com.cloudflare.api.account.zone.*": "*"
-                },
-                "permission_groups": [
-                    {
-                        "id": "c8fed203ed3043cba015a93ad1616f1f",
-                        "name": "Zone Read"
-                    },
-                    {
-                        "id": "4755a26eedb94da69e1066d98aa820be",
-                        "name": "DNS Write"
-                    }
-                ]
-            },
-            {
-                "effect": "allow",
-                "resources": {
-                    "com.cloudflare.api.account.*": "*"
-                },
-                "permission_groups": [
-                    {
-                        "id": "57337c87f2174111a3035104c8672722",
-                        "name": "Tunnel Write"
-                    }
-                ]
-            }
-        ],
-        "not_before": "'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'",
-        "expires_on": "'"$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ)"'"
-    }')
+    --data "$JSON_PAYLOAD")
 
 if echo "$TOKEN_RESPONSE" | grep -q '"success":true'; then
     CF_API_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"value":"[^"]*' | cut -d'"' -f4)
