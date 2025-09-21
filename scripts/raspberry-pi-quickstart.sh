@@ -1353,17 +1353,13 @@ choose_setup_method() {
     echo "   ✅ Full control over configuration"
     echo ""
     
+    local method_choice
     while true; do
         read -p "👉 Choose setup method (1-3): " method_choice
         case $method_choice in
-            1)
-                return 1  # Cloudflare Tunnel
-                ;;
-            2)
-                return 2  # Dynamic DNS
-                ;;
-            3)
-                return 3  # Static IP
+            1|2|3)
+                echo "$method_choice"
+                return 0
                 ;;
             *)
                 echo "❌ Please enter 1, 2, or 3"
@@ -1378,8 +1374,7 @@ setup_public_url_with_retry() {
     local setup_attempt=1
     
     # Choose setup method
-    choose_setup_method
-    local setup_method=$?
+    local setup_method=$(choose_setup_method)
     
     while [ $setup_attempt -le $max_setup_attempts ]; do
         echo ""
