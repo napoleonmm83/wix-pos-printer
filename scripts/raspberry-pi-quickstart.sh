@@ -1271,6 +1271,108 @@ echo "   2) Dynamic DNS + Port Forwarding"
 echo "   3) Traditional Static IP Setup"
 echo ""
 
+# ========================================
+# PYTHON APPLICATION SERVICE SETUP
+# ========================================
+
+setup_python_app_service() {
+    log "
+
+========================================
+🐍 SETTING UP PYTHON APPLICATION SERVICE
+========================================
+"
+
+    # Get the absolute path to the project directory, which is now the service directory
+    local project_dir="/opt/wix-printer-service"
+
+    # Install Python dependencies
+    log "📦 Installing Python dependencies (pip)..."
+    if sudo -u wix-printer bash -c "source $project_dir/venv/bin/activate && python3 -m pip install -r $project_dir/requirements.txt"; then
+        log "✅ Python dependencies installed successfully."
+    else
+        error "Failed to install Python dependencies."
+        return 1
+    fi
+
+    # Ask for Wix Secret Key and create .env file
+    log ""
+    log "🔑 WIX WEBHOOK SECRET KEY SETUP:"
+    log "----------------------------------------"
+    log "Your Wix Secret Key is required to verify incoming webhooks."
+    log "This is separate from your main Wix API Key."
+    log "You can find this in your Wix Dashboard under 'Webhooks'."
+    
+    local wix_secret
+    while true; do
+        echo -n "👉 Enter your Wix Secret Key: "
+        read -s wix_secret # Read silently
+        echo ""
+        if [[ -n "$wix_secret" ]]; then
+            break
+        else
+            warn "The Secret Key cannot be empty."
+        fi
+    done
+
+    # Create .env file in the project's root directory, owned by the service user
+    # We append to the .env file in case it was already created
+    echo "" | sudo -u wix-printer tee -a "$project_dir/.env" > /dev/null
+    echo "# Webhook Configuration" | sudo -u wix-printer tee -a "$project_dir/.env" > /dev/null
+    echo "WIX_SECRET_KEY=$wix_secret" | sudo -u wix-printer tee -a "$project_dir/.env" > /dev/null
+    sudo chown wix-printer:wix-printer "$project_dir/.env"
+    log "✅ .env file updated with your Wix Secret Key."
+
+    # Create systemd service file
+    log ""
+    log "⚙️  Creating systemd service for the Python application..."
+    
+    local service_file="/etc/systemd/system/wix-printer-app.service"
+    local python_executable="$project_dir/venv/bin/python3"
+    local user="wix-printer"
+
+    sudo tee "$service_file" > /dev/null <<EOF
+[Unit]
+Description=Wix Printer Webhook Application
+After=network.target cloudflared.service
+Requires=cloudflared.service
+
+[Service]
+User=$user
+Group=$(id -gn $user)
+WorkingDirectory=$project_dir
+ExecStart=$python_executable app.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    log "✅ Systemd service file created at $service_file"
+
+    # Enable and start the service
+    log ""
+    log "🚀 Enabling and starting the application service..."
+    sudo systemctl daemon-reload
+    sudo systemctl enable wix-printer-app.service
+    sudo systemctl restart wix-printer-app.service # Use restart to ensure it picks up new config
+    
+    # Check status
+    sleep 2 # Give the service a moment to start
+    if systemctl is-active --quiet wix-printer-app.service; then
+        log "✅ Application service is now running in the background."
+        log "   • To view logs: sudo journalctl -u wix-printer-app -f"
+        log "   • To check status: sudo systemctl status wix-printer-app"
+    else
+        error "Failed to start the application service. Check logs for details."
+        log "   • Run 'sudo journalctl -u wix-printer-app' to diagnose."
+        return 1
+    fi
+}
+
 # Function to test public URL accessibility
 test_public_url() {
     local domain="$1"
@@ -1543,7 +1645,10 @@ read -p "❓ Would you like to set up public URL access for webhooks? (y/N): " -
 echo ""
 
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    setup_public_url_with_retry
+    if setup_public_url_with_retry; then
+        # If public URL setup was successful, also set up the Python app service
+        setup_python_app_service
+    fi
 else
     echo "⏭️  Public URL setup skipped"
     echo ""
@@ -1570,10 +1675,11 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 fi
 echo ""
 echo "🔧 MANAGEMENT COMMANDS:"
-echo "   • Check service status: sudo systemctl status wix-printer.service"
-echo "   • View service logs: sudo journalctl -u wix-printer.service -f"
-echo "   • Restart service: sudo systemctl restart wix-printer.service"
-echo "   • Test local API: curl http://localhost:8000/health"
+echo "   • Main Service Status: sudo systemctl status wix-printer.service"
+echo "   • Main Service Logs:   sudo journalctl -u wix-printer.service -f"
+echo "   • Webhook App Status:  sudo systemctl status wix-printer-app.service"
+echo "   • Webhook App Logs:    sudo journalctl -u wix-printer-app -f"
+echo "   • Test local API:      curl http://localhost:8000/health"
 echo ""
 echo "📚 DOCUMENTATION:"
 echo "   • Local API docs: http://localhost:8000/docs"

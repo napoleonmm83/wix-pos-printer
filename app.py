@@ -7,6 +7,10 @@ import os
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.responses import JSONResponse
 import uvicorn
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # --- Configuration ---
 # Configure logging to show timestamp, level, and message
