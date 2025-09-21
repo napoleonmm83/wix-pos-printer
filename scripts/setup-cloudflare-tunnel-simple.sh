@@ -268,28 +268,21 @@ TOKEN_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/user/toke
                 "resources": {
                     "com.cloudflare.api.account.zone.*": "*"
                 },
-                "permission_groups": [
-                    {
-                        "id": "c8fed203ed3043cba015a93ad1616f1f",
-                        "name": "Zone:Zone:Read"
-                    },
-                    {
-                        "id": "4755a26eedb94da69e1066d98aa820be",
-                        "name": "Zone:DNS:Edit"
-                    }
-                ]
+                "permissions": {
+                    "com.cloudflare.api.account.zone.list": "read",
+                    "com.cloudflare.api.account.zone.read": "read",
+                    "com.cloudflare.api.account.zone.dns.edit": "edit"
+                }
             },
             {
                 "effect": "allow",
                 "resources": {
                     "com.cloudflare.api.account.*": "*"
                 },
-                "permission_groups": [
-                    {
-                        "id": "79c6f70e22f04f9494c5da4c2292f804",
-                        "name": "Cloudflare Tunnel:Edit"
-                    }
-                ]
+                "permissions": {
+                    "com.cloudflare.api.account.cfd_tunnel.edit": "edit",
+                    "com.cloudflare.api.account.cfd_tunnel.list": "read"
+                }
             }
         ],
         "not_before": "'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'",

@@ -49,7 +49,8 @@ Eine robuste Strategie mit benutzerdefinierten Exceptions, strukturiertem Loggin
 Ein minimaler, aber strikter Satz von Regeln (PEP 8, `black`, `flake8`, keine Hardcodings) ist für den KI-Agenten verbindlich.
 
 ## 14. Test-Strategie
-Eine umfassende Strategie mit Unit- und Integrationstests (>90% Abdeckung), `pytest` und CI-Integration via GitHub Actions ist geplant.
+Eine umfassende Strategie mit Unit- und Integrationstests (>90% Abdeckung), `pytest` und CI-Integration via GitHub Actions ist geplant.n
+
 
 ## 15. Sicherheit
 Grundlegende Sicherheitsmassnahmen für Eingabe-Validierung, Secrets Management und Schutz von Kundendaten sind definiert.
