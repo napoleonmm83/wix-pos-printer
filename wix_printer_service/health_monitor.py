@@ -31,7 +31,9 @@ class ResourceType(Enum):
     CPU = "cpu"
     DISK = "disk"
     THREADS = "threads"
+    WEBHOOK = "webhook"
     CONNECTIONS = "connections"
+    PUBLIC_URL = "public_url"
 
 
 @dataclass
@@ -120,6 +122,22 @@ class HealthMonitor:
                 critical_threshold=90.0,   # 90% of max threads
                 emergency_threshold=95.0,  # 95% of max threads
                 check_interval=60.0
+            ),
+            ResourceType.WEBHOOK: HealthThreshold(
+                resource_type=ResourceType.WEBHOOK,
+                warning_threshold=10.0,    # 10% webhook failure rate
+                critical_threshold=25.0,   # 25% webhook failure rate
+                emergency_threshold=50.0,  # 50% webhook failure rate
+                check_interval=300.0,      # 5 minutes
+                enabled=True
+            ),
+            ResourceType.PUBLIC_URL: HealthThreshold(
+                resource_type=ResourceType.PUBLIC_URL,
+                warning_threshold=5.0,     # 5% failure rate
+                critical_threshold=15.0,   # 15% failure rate
+                emergency_threshold=50.0,  # 50% failure rate
+                check_interval=300.0,      # 5 minutes
+                enabled=True
             )
         }
         
@@ -135,7 +153,27 @@ class HealthMonitor:
             ResourceType.MEMORY: [self._perform_garbage_collection],
             ResourceType.CPU: [],
             ResourceType.DISK: [self._cleanup_temp_files],
-            ResourceType.THREADS: []
+            ResourceType.THREADS: [],
+            ResourceType.WEBHOOK: [],
+            ResourceType.PUBLIC_URL: []
+        }
+        
+        # Webhook statistics tracking
+        self._webhook_stats = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "last_reset": datetime.now()
+        }
+        
+        # Public URL statistics tracking
+        self._public_url_stats = {
+            "total_checks": 0,
+            "successful_checks": 0,
+            "failed_checks": 0,
+            "last_reset": datetime.now(),
+            "last_ssl_check": None,
+            "ssl_expiry_days": None
         }
         
         # Statistics
@@ -405,6 +443,72 @@ class HealthMonitor:
             
             value = thread_percent
             
+        elif resource_type == ResourceType.WEBHOOK:
+            # Webhook failure rate percentage
+            total = self._webhook_stats["total_requests"]
+            failed = self._webhook_stats["failed_requests"]
+            
+            if total > 0:
+                failure_rate = (failed / total) * 100
+            else:
+                failure_rate = 0.0
+            
+            metadata = {
+                "total_requests": total,
+                "successful_requests": self._webhook_stats["successful_requests"],
+                "failed_requests": failed,
+                "success_rate": 100 - failure_rate if total > 0 else 100,
+                "last_reset": self._webhook_stats["last_reset"].isoformat()
+            }
+            
+            value = failure_rate
+            
+        elif resource_type == ResourceType.PUBLIC_URL:
+            # Public URL failure rate percentage
+            total = self._public_url_stats["total_checks"]
+            failed = self._public_url_stats["failed_checks"]
+            
+            if total > 0:
+                failure_rate = (failed / total) * 100
+            else:
+                failure_rate = 0.0
+            
+            # Get current public URL status
+            try:
+                from .public_url_monitor import get_public_url_monitor
+                monitor = get_public_url_monitor()
+                
+                if monitor.is_configured():
+                    health_metrics = monitor.get_health_metrics()
+                    ssl_info = health_metrics.get("ssl_certificate", {})
+                    
+                    metadata = {
+                        "total_checks": total,
+                        "successful_checks": self._public_url_stats["successful_checks"],
+                        "failed_checks": failed,
+                        "success_rate": 100 - failure_rate if total > 0 else 100,
+                        "domain": health_metrics.get("domain"),
+                        "status": health_metrics.get("status"),
+                        "dns_resolved_ip": health_metrics.get("dns_resolved_ip"),
+                        "ssl_valid": ssl_info.get("valid", False),
+                        "ssl_days_until_expiry": ssl_info.get("days_until_expiry"),
+                        "last_reset": self._public_url_stats["last_reset"].isoformat()
+                    }
+                else:
+                    metadata = {
+                        "configured": False,
+                        "message": "Public URL monitoring not configured"
+                    }
+                    failure_rate = 0.0  # Not configured is not a failure
+                    
+            except ImportError:
+                metadata = {
+                    "error": "Public URL monitor not available"
+                }
+                failure_rate = 0.0
+            
+            value = failure_rate
+            
         else:
             raise ValueError(f"Unknown resource type: {resource_type}")
         
@@ -603,6 +707,64 @@ class HealthMonitor:
                 conn.commit()
         except Exception as e:
             logger.error(f"Failed to log health metric: {e}")
+    
+    def record_webhook_request(self, success: bool):
+        """Record a webhook request for health monitoring."""
+        with self._lock:
+            self._webhook_stats["total_requests"] += 1
+            if success:
+                self._webhook_stats["successful_requests"] += 1
+            else:
+                self._webhook_stats["failed_requests"] += 1
+    
+    def reset_webhook_stats(self):
+        """Reset webhook statistics (useful for periodic resets)."""
+        with self._lock:
+            self._webhook_stats = {
+                "total_requests": 0,
+                "successful_requests": 0,
+                "failed_requests": 0,
+                "last_reset": datetime.now()
+            }
+            logger.info("Webhook statistics reset")
+    
+    def get_webhook_stats(self) -> Dict[str, Any]:
+        """Get current webhook statistics."""
+        with self._lock:
+            return self._webhook_stats.copy()
+    
+    def record_public_url_check(self, success: bool):
+        """Record a public URL check for health monitoring."""
+        with self._lock:
+            self._public_url_stats["total_checks"] += 1
+            if success:
+                self._public_url_stats["successful_checks"] += 1
+            else:
+                self._public_url_stats["failed_checks"] += 1
+    
+    def update_ssl_status(self, days_until_expiry: Optional[int]):
+        """Update SSL certificate expiry information."""
+        with self._lock:
+            self._public_url_stats["last_ssl_check"] = datetime.now()
+            self._public_url_stats["ssl_expiry_days"] = days_until_expiry
+    
+    def reset_public_url_stats(self):
+        """Reset public URL statistics (useful for periodic resets)."""
+        with self._lock:
+            self._public_url_stats = {
+                "total_checks": 0,
+                "successful_checks": 0,
+                "failed_checks": 0,
+                "last_reset": datetime.now(),
+                "last_ssl_check": None,
+                "ssl_expiry_days": None
+            }
+            logger.info("Public URL statistics reset")
+    
+    def get_public_url_stats(self) -> Dict[str, Any]:
+        """Get current public URL statistics."""
+        with self._lock:
+            return self._public_url_stats.copy()
 
 
 # Convenience function for getting system health

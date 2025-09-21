@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # 🍓 Raspberry Pi Quick Start Script
-# Wix Printer Service - Epic 2 Complete with Self-Healing
-# Version: 1.3 - Enhanced detection, UX, paper width & test print
-# Date: 2025-09-20
+# Wix Printer Service - Epic 1, 2 & 3 Complete with Public URL Integration
+# Version: 1.4 - Added Public URL Setup with SSL and Webhook Integration
+# Date: 2025-09-21
 
 set -e  # Exit on any error
 
@@ -69,7 +69,9 @@ show_help() {
     echo "  $0 --help       # Show this help"
     echo ""
     echo "FEATURES:"
-    echo "  ✅ Epic 2 Self-Healing System (Intelligent Retry, Health Monitoring, Circuit Breaker)"
+    echo "  ✅ Epic 1: Core printing functionality with Wix API integration"
+    echo "  ✅ Epic 2: Self-Healing System (Intelligent Retry, Health Monitoring, Circuit Breaker)"
+    echo "  ✅ Epic 3: Public URL Setup with SSL certificates and webhook integration"
     echo "  ✅ Interactive Configuration Wizard"
     echo "  ✅ Automatic Printer Detection"
     echo "  ✅ Complete Reset/Cleanup Functionality"
@@ -105,7 +107,7 @@ if [[ $EUID -eq 0 ]]; then
 fi
 
 log "🍓 Starting Raspberry Pi Setup for Wix Printer Service"
-log "Epic 2 Complete - Self-Healing System Ready!"
+log "Epic 1, 2 & 3 Complete - Full Production System with Public URL Integration!"
 log ""
 log "💡 TIP: Use '$0 --reset' to completely remove an existing installation"
 log "💡 TIP: Use '$0 --help' for all available options"
@@ -1240,6 +1242,322 @@ else
     log "Service not started. Start manually with: sudo systemctl start wix-printer.service"
 fi
 
+# Phase 8: Optional Public URL Setup (Story 3.2 Integration)
+echo ""
+echo "=========================================="
+echo "🌐 OPTIONAL: PUBLIC URL SETUP (STORY 3.2)"
+echo "=========================================="
+echo ""
+echo "Your Wix Printer Service is now running locally and ready for use!"
+echo ""
+echo "🔗 WEBHOOK INTEGRATION OPTION:"
+echo "   Do you want to enable real-time webhook integration?"
+echo "   This allows Wix to send orders directly to your printer automatically."
+echo ""
+echo "✅ BENEFITS:"
+echo "   • Real-time order printing (no manual sync needed)"
+echo "   • Automatic SSL certificate management"
+echo "   • Enterprise-grade security and monitoring"
+echo "   • Professional public URL for your service"
+echo ""
+echo "⚠️  REQUIREMENTS:"
+echo "   • Domain name or subdomain"
+echo "   • Internet connection"
+echo "   • Router admin access (for some solutions)"
+echo ""
+echo "🌐 AVAILABLE SOLUTIONS:"
+echo "   1) Cloudflare Tunnel (no static IP needed) ⭐"
+echo "   2) Dynamic DNS + Port Forwarding"
+echo "   3) Traditional Static IP Setup"
+echo ""
+
+# Function to test public URL accessibility
+test_public_url() {
+    local domain="$1"
+    local max_attempts=3
+    local attempt=1
+    
+    echo "🔍 Testing public URL accessibility..."
+    echo ""
+    
+    while [ $attempt -le $max_attempts ]; do
+        echo "   Attempt $attempt/$max_attempts: Testing https://$domain/health"
+        
+        # Test DNS resolution first
+        if ! nslookup "$domain" >/dev/null 2>&1; then
+            echo "   ❌ DNS resolution failed for $domain"
+            if [ $attempt -eq $max_attempts ]; then
+                return 1
+            fi
+            echo "   ⏳ Waiting 30 seconds for DNS propagation..."
+            sleep 30
+            ((attempt++))
+            continue
+        fi
+        
+        # Test HTTPS accessibility
+        if curl -s -f -m 10 "https://$domain/health" >/dev/null 2>&1; then
+            echo "   ✅ Public URL is accessible!"
+            echo "   ✅ HTTPS is working correctly"
+            echo "   ✅ Health endpoint responding"
+            
+            # Test webhook endpoint
+            echo "   🔗 Testing webhook endpoint..."
+            if curl -s -f -m 10 -X POST "https://$domain/webhook/orders" \
+                -H "Content-Type: application/json" \
+                -d '{"test": "connectivity"}' >/dev/null 2>&1; then
+                echo "   ✅ Webhook endpoint is accessible"
+            else
+                echo "   ⚠️  Webhook endpoint test failed (may be normal due to validation)"
+            fi
+            
+            return 0
+        else
+            echo "   ❌ HTTPS connection failed"
+            if [ $attempt -eq $max_attempts ]; then
+                return 1
+            fi
+            echo "   ⏳ Waiting 30 seconds before retry..."
+            sleep 30
+            ((attempt++))
+        fi
+    done
+    
+    return 1
+}
+
+# Function to choose setup method
+choose_setup_method() {
+    echo "🌐 PUBLIC URL SETUP METHOD:"
+    echo "=========================================="
+    echo ""
+    echo "Choose the best method for your network setup:"
+    echo ""
+    echo "1️⃣ CLOUDFLARE TUNNEL (RECOMMENDED) ⭐"
+    echo "   ✅ No static IP required"
+    echo "   ✅ No router configuration needed"
+    echo "   ✅ Automatic SSL certificates"
+    echo "   ✅ Built-in DDoS protection"
+    echo "   ✅ Works behind any firewall/NAT"
+    echo ""
+    echo "2️⃣ DYNAMIC DNS + PORT FORWARDING"
+    echo "   ✅ Works with dynamic IP addresses"
+    echo "   ⚠️  Requires router port forwarding"
+    echo "   ✅ Multiple DDNS providers supported"
+    echo "   ✅ Traditional setup method"
+    echo ""
+    echo "3️⃣ STATIC IP SETUP"
+    echo "   ⚠️  Requires static IP address"
+    echo "   ⚠️  Requires router port forwarding"
+    echo "   ✅ Most direct method"
+    echo "   ✅ Full control over configuration"
+    echo ""
+    
+    while true; do
+        read -p "👉 Choose setup method (1-3): " method_choice
+        case $method_choice in
+            1)
+                return 1  # Cloudflare Tunnel
+                ;;
+            2)
+                return 2  # Dynamic DNS
+                ;;
+            3)
+                return 3  # Static IP
+                ;;
+            *)
+                echo "❌ Please enter 1, 2, or 3"
+                ;;
+        esac
+    done
+}
+
+# Function to run public URL setup with retry logic
+setup_public_url_with_retry() {
+    local max_setup_attempts=3
+    local setup_attempt=1
+    
+    # Choose setup method
+    choose_setup_method
+    local setup_method=$?
+    
+    while [ $setup_attempt -le $max_setup_attempts ]; do
+        echo ""
+        case $setup_method in
+            1)
+                echo "🚀 STARTING CLOUDFLARE TUNNEL SETUP (Attempt $setup_attempt/$max_setup_attempts)"
+                echo "================================================================="
+                SETUP_SCRIPT="setup-cloudflare-tunnel.sh"
+                ;;
+            2)
+                echo "🚀 STARTING DYNAMIC DNS SETUP (Attempt $setup_attempt/$max_setup_attempts)"
+                echo "=========================================================="
+                SETUP_SCRIPT="setup-dynamic-dns.sh"
+                ;;
+            3)
+                echo "🚀 STARTING STATIC IP SETUP (Attempt $setup_attempt/$max_setup_attempts)"
+                echo "========================================================"
+                SETUP_SCRIPT="setup-public-access.sh"
+                ;;
+        esac
+        
+        # Run the appropriate setup script
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        PUBLIC_URL_SCRIPT="$SCRIPT_DIR/$SETUP_SCRIPT"
+        
+        if [ ! -f "$PUBLIC_URL_SCRIPT" ]; then
+            error "Setup script not found: $PUBLIC_URL_SCRIPT"
+            return 1
+        fi
+        
+        # Make script executable
+        chmod +x "$PUBLIC_URL_SCRIPT"
+        
+        # Run the setup script
+        if bash "$PUBLIC_URL_SCRIPT"; then
+            echo ""
+            echo "✅ Public URL setup completed!"
+            echo ""
+            
+            # Ask for domain to test
+            echo "🔍 VERIFICATION PHASE:"
+            echo "   Let's verify that your public URL is working correctly."
+            echo ""
+            echo -n "   👉 Enter your domain name for testing (e.g., printer.example.com): "
+            read DOMAIN_TO_TEST
+            
+            if [ -n "$DOMAIN_TO_TEST" ]; then
+                echo ""
+                if test_public_url "$DOMAIN_TO_TEST"; then
+                    echo ""
+                    echo "🎉 SUCCESS! Your public URL is fully functional!"
+                    echo ""
+                    echo "📋 WEBHOOK CONFIGURATION:"
+                    echo "   Configure your Wix webhook URL as:"
+                    echo "   👉 https://$DOMAIN_TO_TEST/webhook/orders"
+                    echo ""
+                    echo "🔧 MANAGEMENT URLS:"
+                    echo "   • Health Status: https://$DOMAIN_TO_TEST/health"
+                    echo "   • Public URL Status: https://$DOMAIN_TO_TEST/public-url/status"
+                    echo "   • API Documentation: https://$DOMAIN_TO_TEST/docs"
+                    echo ""
+                    return 0
+                else
+                    echo ""
+                    echo "❌ PUBLIC URL VERIFICATION FAILED!"
+                    echo ""
+                    echo "🔍 POSSIBLE ISSUES:"
+                    echo "   • DNS not fully propagated yet (wait 5-30 minutes)"
+                    echo "   • Router port forwarding not configured correctly"
+                    echo "   • SSL certificate not installed properly"
+                    echo "   • Firewall blocking connections"
+                    echo ""
+                    
+                    if [ $setup_attempt -lt $max_setup_attempts ]; then
+                        echo "❓ RETRY OPTIONS:"
+                        echo "   1) Retry setup immediately"
+                        echo "   2) Wait 5 minutes and retry"
+                        echo "   3) Skip and continue (setup manually later)"
+                        echo ""
+                        
+                        while true; do
+                            read -p "   👉 Choose option (1-3): " retry_choice
+                            case $retry_choice in
+                                1)
+                                    echo "   🔄 Retrying setup immediately..."
+                                    break
+                                    ;;
+                                2)
+                                    echo "   ⏳ Waiting 5 minutes for DNS/SSL propagation..."
+                                    sleep 300
+                                    echo "   🔄 Retrying setup after wait..."
+                                    break
+                                    ;;
+                                3)
+                                    echo "   ⏭️  Skipping public URL setup"
+                                    echo "   💡 You can run it later with: ./scripts/setup-public-access.sh"
+                                    return 0
+                                    ;;
+                                *)
+                                    echo "   ❌ Please enter 1, 2, or 3"
+                                    ;;
+                            esac
+                        done
+                    fi
+                fi
+            else
+                echo "   ⏭️  Domain not provided, skipping verification"
+                return 0
+            fi
+        else
+            echo ""
+            echo "❌ Public URL setup failed!"
+            
+            if [ $setup_attempt -lt $max_setup_attempts ]; then
+                echo ""
+                echo "❓ RETRY SETUP?"
+                read -p "   👉 Try again? (y/N): " -r
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    echo "   🔄 Retrying public URL setup..."
+                else
+                    echo "   ⏭️  Skipping public URL setup"
+                    echo "   💡 You can run it later with: ./scripts/setup-public-access.sh"
+                    return 0
+                fi
+            fi
+        fi
+        
+        ((setup_attempt++))
+    done
+    
+    echo ""
+    echo "❌ Public URL setup failed after $max_setup_attempts attempts"
+    echo "💡 You can try again later with: ./scripts/setup-public-access.sh"
+    echo ""
+    return 1
+}
+
+# Interactive prompt for public URL setup
+read -p "❓ Would you like to set up public URL access for webhooks? (y/N): " -r
+echo ""
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    setup_public_url_with_retry
+else
+    echo "⏭️  Public URL setup skipped"
+    echo ""
+    echo "💡 MANUAL SETUP LATER:"
+    echo "   You can enable public URL access anytime by running:"
+    echo "   👉 cd /opt/wix-printer-service && ./scripts/setup-public-access.sh"
+    echo ""
+fi
+
 echo ""
 log "🚀 Raspberry Pi setup complete! Your restaurant printing system is ready with full self-healing capabilities."
+
+# Final status summary
+echo ""
+echo "=========================================="
+echo "📋 SETUP SUMMARY"
+echo "=========================================="
+echo ""
+echo "✅ COMPLETED FEATURES:"
+echo "   • Epic 1: Core printing functionality"
+echo "   • Epic 2: Self-healing system with health monitoring"
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "   • Epic 3: Public URL and webhook integration"
+fi
+echo ""
+echo "🔧 MANAGEMENT COMMANDS:"
+echo "   • Check service status: sudo systemctl status wix-printer.service"
+echo "   • View service logs: sudo journalctl -u wix-printer.service -f"
+echo "   • Restart service: sudo systemctl restart wix-printer.service"
+echo "   • Test local API: curl http://localhost:8000/health"
+echo ""
+echo "📚 DOCUMENTATION:"
+echo "   • Local API docs: http://localhost:8000/docs"
+echo "   • Setup guide: /opt/wix-printer-service/docs/"
+echo "   • Reset/cleanup: ./scripts/raspberry-pi-quickstart.sh --reset"
+echo ""
+echo "🎉 Your Wix Printer Service is ready for production use!"
 echo ""
