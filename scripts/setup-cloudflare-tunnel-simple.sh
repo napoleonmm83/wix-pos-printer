@@ -411,24 +411,42 @@ EOF
 chmod 600 ~/.cloudflared/"$TUNNEL_ID".json
 log "✅ Credentials file created."
 
-# Get tunnel ID
-TUNNEL_ID=$(cloudflared tunnel list | grep "$TUNNEL_NAME" | awk '{print $1}')
-if [[ -z "$TUNNEL_ID" ]]; then
-    error "Could not find tunnel ID"
+# The TUNNEL_ID is already available from the API response. No need to list tunnels.
+
+# Create DNS record via API
+log "🌐 Creating DNS record via API..."
+
+# Get Zone ID
+ZONE_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=$DOMAIN" \
+    -H "Authorization: Bearer $CF_API_TOKEN" \
+    -H "Content-Type: application/json")
+
+ZONE_ID=$(echo "$ZONE_RESPONSE" | jq -r '.result[0].id')
+
+if [[ -z "$ZONE_ID" ]]; then
+    error "Could not determine Zone ID for domain $DOMAIN."
     exit 1
 fi
+log "✅ Found Zone ID: $ZONE_ID"
 
-log "Tunnel ID: $TUNNEL_ID"
+# Create CNAME record pointing to the tunnel
+DNS_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+    -H "Authorization: Bearer $CF_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    --data-raw '{
+        "type": "CNAME",
+        "name": "'$SUBDOMAIN'",
+        "content": "'$TUNNEL_ID'.cfargotunnel.com",
+        "ttl": 1,
+        "proxied": true
+    }')
 
-# Create DNS record
-log "🌐 Creating DNS record..."
-
-if cloudflared tunnel route dns "$TUNNEL_ID" "$FULL_DOMAIN"; then
-    log "✅ DNS record created: $FULL_DOMAIN"
-else
-    error "Failed to create DNS record"
+if ! echo "$DNS_RESPONSE" | jq -e '.success == true' > /dev/null; then
+    error "Failed to create DNS record via API."
+    echo "Response: $DNS_RESPONSE"
     exit 1
 fi
+log "✅ DNS record created successfully for $FULL_DOMAIN"
 
 # Create tunnel configuration
 log "⚙️ Creating tunnel configuration..."
