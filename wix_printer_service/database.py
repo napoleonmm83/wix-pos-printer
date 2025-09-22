@@ -358,5 +358,10 @@ class Database:
     def close(self):
         """Close database connection."""
         if self.connection:
-            self.connection.close()
-            logger.info("Database connection closed")
+            try:
+                self.connection.close()
+                logger.info("Database connection closed")
+            except Exception as e:
+                logger.warning(f"Error closing database connection: {e}")
+            finally:
+                self.connection = None

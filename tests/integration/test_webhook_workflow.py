@@ -18,8 +18,7 @@ from wix_printer_service.database import Database
 def client():
     """Create an isolated TestClient for each test."""
     app = create_app()
-    with TestClient(app) as c:
-        yield c
+    return TestClient(app)
 
 class TestWebhookWorkflowIntegration:
     """Test complete webhook processing workflow."""

@@ -8,7 +8,7 @@ import os
 from unittest.mock import Mock, patch, MagicMock
 from fastapi.testclient import TestClient
 
-from wix_printer_service.api.main import app
+from wix_printer_service.api.main import create_app
 
 
 class TestWebhookEndpoint:
@@ -17,6 +17,7 @@ class TestWebhookEndpoint:
     @pytest.fixture
     def client(self):
         """Create test client."""
+        app = create_app()
         return TestClient(app)
     
     @pytest.fixture
@@ -207,6 +208,7 @@ class TestOrderEndpoint:
     @pytest.fixture
     def client(self):
         """Create test client."""
+        app = create_app()
         return TestClient(app)
     
     @patch('wix_printer_service.api.main.get_order_service')
@@ -268,6 +270,7 @@ class TestStatusEndpoint:
     @pytest.fixture
     def client(self):
         """Create test client."""
+        app = create_app()
         return TestClient(app)
     
     @patch('wix_printer_service.api.main.get_database')

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from datetime import datetime
 
 from wix_printer_service.webhook_validator import WebhookValidator, get_webhook_validator
-from wix_printer_service.api.main import app
+from wix_printer_service.api.main import create_app
 
 
 class TestWebhookValidator:
@@ -135,6 +135,7 @@ class TestWebhookEndpoint:
     
     def setup_method(self):
         """Set up test client and fixtures."""
+        app = create_app()
         self.client = TestClient(app)
         self.test_webhook_data = {
             "eventType": "OrderCreated",
@@ -266,6 +267,7 @@ class TestWebhookSecurity:
     
     def setup_method(self):
         """Set up test client."""
+        app = create_app()
         self.client = TestClient(app)
     
     def test_security_headers_present(self):
@@ -301,6 +303,7 @@ class TestWebhookStatistics:
     
     def setup_method(self):
         """Set up test client."""
+        app = create_app()
         self.client = TestClient(app)
     
     @patch('wix_printer_service.api.main.get_print_manager')

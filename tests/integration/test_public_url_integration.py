@@ -15,8 +15,7 @@ from wix_printer_service.public_url_monitor import PublicUrlStatus, SSLCertifica
 def client():
     """Create an isolated TestClient for each test."""
     app = create_app()
-    with TestClient(app) as c:
-        yield c
+    return TestClient(app)
 
 class TestPublicUrlAPIIntegration:
     """Test public URL API endpoints integration."""

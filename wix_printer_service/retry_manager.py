@@ -252,16 +252,17 @@ class RetryManager:
         """Stop the retry manager."""
         if not self._running:
             return
-        
+
         self._running = False
-        
-        if self._worker_task:
+
+        if self._worker_task and not self._worker_task.done():
             self._worker_task.cancel()
             try:
-                await self._worker_task
-            except asyncio.CancelledError:
+                await asyncio.wait_for(self._worker_task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError, RuntimeError):
+                # Task was cancelled, timed out, or event loop is closed
                 pass
-        
+
         logger.info("Retry manager stopped")
     
     async def retry_operation(
@@ -353,22 +354,30 @@ class RetryManager:
     async def _worker_loop(self):
         """Main worker loop for processing retry queue."""
         logger.info("Retry manager worker loop started")
-        
+
         while self._running:
             try:
                 # Wait for retry task with timeout
                 task = await asyncio.wait_for(self._retry_queue.get(), timeout=1.0)
                 await self._process_retry_task(task)
-                
+
             except asyncio.TimeoutError:
                 # Normal timeout, continue loop
                 continue
             except asyncio.CancelledError:
                 logger.info("Retry manager worker loop cancelled")
                 break
+            except (RuntimeError, GeneratorExit) as e:
+                # Event loop is closed or task is being destroyed
+                logger.info(f"Retry manager worker loop shutting down: {e}")
+                break
             except Exception as e:
                 logger.error(f"Error in retry manager worker loop: {e}")
-                await asyncio.sleep(1)
+                try:
+                    await asyncio.sleep(1)
+                except (RuntimeError, asyncio.CancelledError):
+                    # Event loop closed during sleep, break out
+                    break
     
     async def _process_retry_task(self, task: RetryableTask):
         """Process a single retry task."""

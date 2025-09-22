@@ -22,13 +22,30 @@ class TestDatabase:
         """Create a temporary database for testing."""
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
         temp_file.close()
-        
+
         db = Database(temp_file.name)
         yield db
-        
+
         # Cleanup
-        db.close()
-        os.unlink(temp_file.name)
+        try:
+            db.close()
+        except Exception:
+            pass
+
+        # Force close any remaining connections and wait before deletion
+        import time
+        time.sleep(0.1)
+
+        try:
+            os.unlink(temp_file.name)
+        except PermissionError:
+            # On Windows, the file might still be locked, try again after a brief delay
+            time.sleep(0.5)
+            try:
+                os.unlink(temp_file.name)
+            except PermissionError:
+                # If still can't delete, let it be cleaned up by temp directory cleanup
+                pass
     
     def test_database_initialization(self, temp_db):
         """Test database initialization creates tables."""

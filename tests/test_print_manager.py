@@ -18,7 +18,12 @@ class TestPrintManager:
     @pytest.fixture
     def mock_database(self):
         """Create a mock database."""
-        return Mock()
+        mock_db = Mock()
+        mock_conn = Mock()
+        mock_conn.__enter__ = Mock(return_value=mock_conn)
+        mock_conn.__exit__ = Mock(return_value=None)
+        mock_db.get_connection.return_value = mock_conn
+        return mock_db
     
     @pytest.fixture
     def mock_printer_client(self):

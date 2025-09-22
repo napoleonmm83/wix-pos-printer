@@ -636,6 +636,10 @@ class TestNotificationIntegration:
         )
         
         mock_database = Mock()
+        mock_conn = Mock()
+        mock_conn.__enter__ = Mock(return_value=mock_conn)
+        mock_conn.__exit__ = Mock(return_value=None)
+        mock_database.get_connection.return_value = mock_conn
         service = NotificationService(config, mock_database)
         
         return {
