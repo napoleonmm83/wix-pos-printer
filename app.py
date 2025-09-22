@@ -188,6 +188,10 @@ async def fetch_wix_orders(from_date: Optional[str] = None, to_date: Optional[st
             date_filter["$lte"] = to_date
         filter_obj["createdDate"] = date_filter
 
+        # DEBUG: Also try filtering by purchasedDate as fallback
+        filter_obj["purchasedDate"] = date_filter.copy()
+        print(f"DEBUG - Added both createdDate AND purchasedDate filters: {date_filter}")
+
     params["filter"] = filter_obj
 
     try:
