@@ -183,7 +183,7 @@ async def fetch_wix_orders(from_date: Optional[str] = None, to_date: Optional[st
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            url = f"{WIX_API_BASE_URL}/stores/v1/orders/query"
+            url = f"{WIX_API_BASE_URL}/ecom/v1/orders/query"
             logging.info(f"Fetching orders from Wix API: {url}")
             logging.info(f"Query parameters: {params}")
 
