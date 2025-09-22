@@ -1620,40 +1620,6 @@ setup_public_url_with_retry() {
     echo "❌ Public URL setup failed after $max_setup_attempts attempts."
     return 1
 }
-                        done
-                    fi
-                fi
-            else
-                echo "   ⏭️  Domain not provided, skipping verification"
-                return 0
-            fi
-        else
-            echo ""
-            echo "❌ Public URL setup failed!"
-            
-            if [ $setup_attempt -lt $max_setup_attempts ]; then
-                echo ""
-                echo "❓ RETRY SETUP?"
-                read -p "   👉 Try again? (y/N): " -r
-                if [[ $REPLY =~ ^[Yy]$ ]]; then
-                    echo "   🔄 Retrying public URL setup..."
-                else
-                    echo "   ⏭️  Skipping public URL setup"
-                    echo "   💡 You can run it later with: ./scripts/setup-public-access.sh"
-                    return 0
-                fi
-            fi
-        fi
-        
-        ((setup_attempt++))
-    done
-    
-    echo ""
-    echo "❌ Public URL setup failed after $max_setup_attempts attempts"
-    echo "💡 You can try again later with: ./scripts/setup-public-access.sh"
-    echo ""
-    return 1
-}
 
 # Interactive prompt for public URL setup
 read -p "❓ Would you like to set up public URL access for webhooks? (y/N): " -r
