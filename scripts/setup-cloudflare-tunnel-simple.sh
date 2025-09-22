@@ -154,8 +154,15 @@ while [[ -z "$CF_EMAIL" ]]; do
     read -p "Enter your Cloudflare email: " CF_EMAIL
     if [[ -z "$CF_EMAIL" ]]; then
         warn "Email is required"
+    else
+        log "✅ Email received: ${CF_EMAIL}"
     fi
 done
+
+echo ""
+echo "Now we need your Cloudflare Global API Key..."
+echo "👉 The key will be hidden as you type for security"
+echo ""
 
 while [[ -z "$CF_GLOBAL_KEY" ]]; do
     echo -n "Enter your Cloudflare Global API Key: "
@@ -163,6 +170,9 @@ while [[ -z "$CF_GLOBAL_KEY" ]]; do
     echo ""
     if [[ -z "$CF_GLOBAL_KEY" ]]; then
         warn "Global API Key is required"
+        echo "Please try again..."
+    else
+        log "✅ API Key received (hidden for security)"
     fi
 done
 

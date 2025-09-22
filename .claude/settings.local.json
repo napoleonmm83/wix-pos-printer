@@ -4,7 +4,8 @@
       "Bash(claude mcp:*)",
       "Bash(git push:*)",
       "Bash(bash:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
