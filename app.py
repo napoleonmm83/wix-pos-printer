@@ -211,6 +211,38 @@ async def fetch_wix_orders(from_date: Optional[str] = None, to_date: Optional[st
             orders = data.get("orders", [])
 
             logging.info(f"Successfully fetched {len(orders)} orders from Wix API")
+
+            # WORKAROUND: Client-side filtering since Wix API ignores date filters
+            if from_date or to_date:
+                from datetime import datetime
+                filtered_orders = []
+                for order in orders:
+                    order_date_str = order.get('createdDate') or order.get('purchasedDate')
+                    if order_date_str:
+                        try:
+                            order_date = datetime.fromisoformat(order_date_str.replace('Z', '+00:00'))
+
+                            # Check if order falls within date range
+                            include_order = True
+                            if from_date:
+                                from_dt = datetime.fromisoformat(from_date.replace('Z', '+00:00'))
+                                if order_date < from_dt:
+                                    include_order = False
+                            if to_date and include_order:
+                                to_dt = datetime.fromisoformat(to_date.replace('Z', '+00:00'))
+                                if order_date > to_dt:
+                                    include_order = False
+
+                            if include_order:
+                                filtered_orders.append(order)
+                        except Exception as e:
+                            logging.warning(f"Error parsing date for order {order.get('id')}: {e}")
+                            # Include orders with unparseable dates to be safe
+                            filtered_orders.append(order)
+
+                logging.info(f"Client-side filtering: {len(orders)} -> {len(filtered_orders)} orders")
+                return filtered_orders
+
             return orders
 
     except httpx.RequestError as e:
