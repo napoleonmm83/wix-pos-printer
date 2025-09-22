@@ -196,6 +196,10 @@ async def fetch_wix_orders(from_date: Optional[str] = None, to_date: Optional[st
             logging.info(f"Fetching orders from Wix API: {url}")
             logging.info(f"Query parameters: {params}")
 
+            # DEBUG: Print exact parameters being sent to API
+            import json
+            print(f"DEBUG - API Request Body: {json.dumps(params, indent=2)}")
+
             response = await client.post(url, headers=headers, json=params)
             response.raise_for_status()
 
