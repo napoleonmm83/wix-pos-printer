@@ -156,6 +156,7 @@ while [[ -z "$CF_EMAIL" ]]; do
         warn "Email is required"
     else
         log "✅ Email received: ${CF_EMAIL}"
+        log "🔄 Proceeding to API key input..."
     fi
 done
 
@@ -182,11 +183,18 @@ log "✅ Credentials collected"
 echo ""
 log "📦 Installing dependencies (jq)..."
 if ! command -v jq >/dev/null 2>&1; then
-    sudo apt-get update
-    sudo apt-get install -y jq
+    log "jq not found, installing..."
+    if ! sudo apt-get update; then
+        error "Failed to update package list"
+        exit 1
+    fi
+    if ! sudo apt-get install -y jq; then
+        error "Failed to install jq"
+        exit 1
+    fi
     log "✅ jq installed successfully."
 else
-    log "jq is already installed."
+    log "✅ jq is already installed."
 fi
 
 # Install cloudflared
