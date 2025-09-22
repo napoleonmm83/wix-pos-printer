@@ -83,8 +83,8 @@ log "✅ Prerequisites check passed"
 
 # Get domain information
 echo ""
-echo "🌐 DOMAIN CONFIGURATION:"
-echo "----------------------------------------"
+echo "🌐 DOMAIN CONFIGURATION"
+echo "========================"
 
 while [[ -z "$DOMAIN" ]]; do
     echo ""
@@ -93,7 +93,7 @@ while [[ -z "$DOMAIN" ]]; do
     echo "   • Nameservers must point to Cloudflare"
     echo "   • Example: example.com (not printer.example.com)"
     echo ""
-    read -p "Enter your domain name (e.g., example.com): " DOMAIN
+    read -p "👉 Enter your domain name (e.g., example.com): " DOMAIN
     
     if [[ -z "$DOMAIN" ]]; then
         warn "Domain name is required"
@@ -111,9 +111,17 @@ while [[ -z "$DOMAIN" ]]; do
 done
 
 echo ""
-read -p "Enter subdomain for printer service (default: printer): " SUBDOMAIN
+echo "🏷️  SUBDOMAIN CONFIGURATION:"
+echo "   • This will be the prefix for your printer service"
+echo "   • Default: printer (recommended)"
+echo "   • Example: printer.yourdomain.com"
+echo ""
+read -p "👉 Enter subdomain for printer service (default: printer): " SUBDOMAIN
 if [[ -z "$SUBDOMAIN" ]]; then
     SUBDOMAIN="printer"
+    log "✅ Using default subdomain: printer"
+else
+    log "✅ Using custom subdomain: $SUBDOMAIN"
 fi
 
 FULL_DOMAIN="$SUBDOMAIN.$DOMAIN"
@@ -134,46 +142,65 @@ fi
 
 # Get Cloudflare credentials
 echo ""
-echo "🔐 CLOUDFLARE CREDENTIALS:"
-echo "----------------------------------------"
+echo "🔐 CLOUDFLARE CREDENTIALS SETUP"
+echo "================================"
 echo ""
 echo "We need your Cloudflare credentials to set up the tunnel automatically."
-echo ""
-echo "📋 REQUIRED:"
-echo "   • Cloudflare email address"
-echo "   • Cloudflare Global API Key"
-echo ""
-echo "ℹ️  HOW TO GET GLOBAL API KEY:"
-echo "   1. Go to https://dash.cloudflare.com/profile/api-tokens"
-echo "   2. Scroll down to 'Global API Key'"
-echo "   3. Click 'View' and enter your password"
-echo "   4. Copy the key"
+echo "This is a 2-step process with clear instructions for each step."
 echo ""
 
 while [[ -z "$CF_EMAIL" ]]; do
-    read -p "Enter your Cloudflare email: " CF_EMAIL
+    echo ""
+    echo "════════════════════════════════════════"
+    echo "📧 STEP 1: CLOUDFLARE EMAIL ADDRESS"
+    echo "════════════════════════════════════════"
+    echo ""
+    read -p "👉 Enter your Cloudflare email: " CF_EMAIL
     if [[ -z "$CF_EMAIL" ]]; then
         warn "Email is required"
     else
         log "✅ Email received: ${CF_EMAIL}"
-        log "🔄 Proceeding to API key input..."
+        echo ""
+        echo "🔄 Moving to API key input..."
+        sleep 2
     fi
 done
 
 echo ""
-echo "Now we need your Cloudflare Global API Key..."
-echo "👉 The key will be hidden as you type for security"
+echo "════════════════════════════════════════"
+echo "🔑 STEP 2: CLOUDFLARE GLOBAL API KEY"
+echo "════════════════════════════════════════"
+echo ""
+echo "ℹ️  HOW TO GET YOUR GLOBAL API KEY:"
+echo "   1. Open: https://dash.cloudflare.com/profile/api-tokens"
+echo "   2. Scroll to 'Global API Key'"
+echo "   3. Click 'View' → Enter password → Copy the key"
+echo ""
+echo "⚠️  IMPORTANT: Your key will be hidden as you type for security!"
 echo ""
 
 while [[ -z "$CF_GLOBAL_KEY" ]]; do
-    echo -n "Enter your Cloudflare Global API Key: "
+    echo "🔐 READY FOR API KEY INPUT"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -n "👉 Paste your Global API Key here and press ENTER: "
     read -s CF_GLOBAL_KEY
     echo ""
+    echo ""
     if [[ -z "$CF_GLOBAL_KEY" ]]; then
-        warn "Global API Key is required"
-        echo "Please try again..."
+        error "Global API Key is required!"
+        echo ""
+        echo "❌ No key was entered. Please try again."
+        echo "💡 Make sure to:"
+        echo "   • Copy the key from Cloudflare dashboard"
+        echo "   • Paste it in the terminal (Ctrl+Shift+V or right-click)"
+        echo "   • Press ENTER after pasting"
+        echo ""
+        read -p "Press ENTER to try again..." -r
     else
-        log "✅ API Key received (hidden for security)"
+        log "✅ API Key received successfully!"
+        echo ""
+        echo "🚀 Proceeding with tunnel setup..."
+        sleep 2
     fi
 done
 
