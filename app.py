@@ -170,16 +170,24 @@ async def fetch_wix_orders(from_date: Optional[str] = None, to_date: Optional[st
         "wix-site-id": WIX_SITE_ID
     }
 
-    # Build query parameters
-    params = {"limit": min(limit, 100)}  # Wix API max limit is 100
+    # Build query parameters using correct Wix API format
+    params = {
+        "cursorPaging": {"limit": min(limit, 100)},  # Wix API max limit is 100
+        "sort": [{"fieldName": "createdDate", "order": "DESC"}]
+    }
 
+    # Build filter object
+    filter_obj = {}
     if from_date:
-        params["query.filter.createdDate.$gte"] = from_date
+        filter_obj["createdDate"] = {"$gte": from_date}
     if to_date:
-        params["query.filter.createdDate.$lte"] = to_date
+        if "createdDate" in filter_obj:
+            filter_obj["createdDate"]["$lte"] = to_date
+        else:
+            filter_obj["createdDate"] = {"$lte": to_date}
 
-    # Sort by creation date (newest first)
-    params["query.sort"] = [{"fieldName": "createdDate", "order": "DESC"}]
+    if filter_obj:
+        params["filter"] = filter_obj
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
