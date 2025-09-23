@@ -125,6 +125,14 @@ sudo apt update && sudo apt-get install -y git python3-pip python3-venv sqlite3 
 if ! id "wix-printer" &>/dev/null; then sudo useradd -r -s /bin/bash -d /opt/wix-printer-service wix-printer; fi
 sudo mkdir -p /opt/wix-printer-service && sudo chown wix-printer:wix-printer /opt/wix-printer-service
 sudo usermod -a -G lp wix-printer
+
+# Grant passwordless sudo for service restarts needed by the auto-updater
+log "🔐 Granting wix-printer user permission to restart services..."
+SUDOERS_FILE="/etc/sudoers.d/010_wix-printer-nopasswd"
+SUDOERS_CONTENT="wix-printer ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart wix-printer.service, /usr/bin/systemctl restart wix-printer-app.service"
+echo "$SUDOERS_CONTENT" | sudo tee "$SUDOERS_FILE" > /dev/null
+sudo chmod 0440 "$SUDOERS_FILE"
+log "✅ Permissions granted for auto-updates."
 sudo bash -c 'echo "SUBSYSTEM==\"usb\", ATTR{idVendor}==\"04b8\", ATTR{idProduct}==\"0e32\", GROUP=\"wix-printer\", MODE=\"0666\"" > /etc/udev/rules.d/99-wix-printer.rules'
 sudo udevadm control --reload-rules && sudo udevadm trigger
 PROJECT_DIR="$(dirname "$(dirname "${BASH_SOURCE[0]}")")"
