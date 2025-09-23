@@ -65,6 +65,7 @@ NAME_ALIASES = {
     "Zone:Zone:Read": ["Zone:Zone:Read", "Zone Read"],
     "Zone:DNS:Edit": ["Zone:DNS:Edit", "DNS Write", "DNS Edit"],
     "Cloudflare Tunnel:Edit": ["Cloudflare Tunnel:Edit", "Cloudflare Tunnel Write", "Cloudflare Tunnel Read"],
+    "Account Settings Read": ["Account Settings Read"],
 }
 
 try:
@@ -295,7 +296,7 @@ create_api_token_automatically() {
     log "🔧 Creating dedicated API token for tunnel management..."
     
     log "DEBUG: Fetching permission group IDs..."
-    local zone_read_id zone_dns_edit_id tunnel_edit_id
+    local zone_read_id zone_dns_edit_id tunnel_edit_id account_settings_read_id
     
     log "DEBUG: Getting Zone:Zone:Read permission ID..."
     zone_read_id=$(get_permission_group_id "Zone:Zone:Read")
@@ -320,6 +321,14 @@ create_api_token_automatically() {
         return 1
     fi
     log "DEBUG: Cloudflare Tunnel:Edit ID = $tunnel_edit_id"
+    
+    log "DEBUG: Getting Account Settings permission ID..."
+    account_settings_read_id=$(get_permission_group_id "Account Settings Read")
+    if [[ $? -ne 0 || -z "$account_settings_read_id" ]]; then
+        error "Failed to get Account Settings Read permission ID"
+        return 1
+    fi
+    log "DEBUG: Account Settings Read ID = $account_settings_read_id"
     
     log "DEBUG: All permission IDs retrieved successfully, creating token..."
 
@@ -357,6 +366,10 @@ create_api_token_automatically() {
         {
           "id": "$tunnel_edit_id",
           "name": "Cloudflare Tunnel Write"
+        },
+        {
+          "id": "$account_settings_read_id",
+          "name": "Account Settings Read"
         }
       ]
     }
@@ -380,20 +393,43 @@ EOF
         if [[ -n "$CF_API_TOKEN" ]]; then
             log "✅ API token created successfully!"
             log "Token expires: $(date -d '+1 year' '+%Y-%m-%d')"
-            
+
             # Save token securely for cloudflared
             mkdir -p ~/.cloudflared
             echo "$CF_API_TOKEN" > ~/.cloudflared/token
             chmod 600 ~/.cloudflared/token
-            
+
             # Set environment variable
             export CLOUDFLARE_API_TOKEN="$CF_API_TOKEN"
-            
+
+            # Retrieve and store account ID for subsequent API calls
+            local verify_response
+            verify_response=$(curl -s -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+                -H "Authorization: Bearer $CF_API_TOKEN" \
+                -H "Content-Type: application/json")
+
+            ACCOUNT_ID=$(echo "$verify_response" | python3 - <<'PY'
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    print(data.get("result", {}).get("account", {}).get("id", ""))
+except Exception:
+    pass
+PY
+)
+
+            if [[ -n "$ACCOUNT_ID" ]]; then
+                log "✅ Retrieved Cloudflare Account ID: $ACCOUNT_ID"
+            else
+                warn "Unable to determine Cloudflare Account ID from token verify response. API tunnel creation may fall back to cloudflared."
+            fi
+
             # Create credentials file for cloudflared
             cat > ~/.cloudflared/cert.pem <<EOF
 # Cloudflare API Token for Tunnel Management
 # Created: $(date)
 # Domain: $DOMAIN
+# Account ID: $ACCOUNT_ID
 # Token: $CF_API_TOKEN
 EOF
             chmod 600 ~/.cloudflared/cert.pem
