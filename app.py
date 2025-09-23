@@ -218,15 +218,15 @@ async def handle_webhook(request: Request):
 @app.post("/webhook/git-update")
 async def handle_git_update(request: Request):
     """Receives a webhook from GitHub to trigger an auto-update."""
-    logging.info("Git update webhook received.")
+    logging.info("Git update webhook received. Verifying signature...")
 
     if not GITHUB_WEBHOOK_SECRET:
-        logging.error("GITHUB_WEBHOOK_SECRET is not configured. Aborting update.")
+        logging.error("CRITICAL: GITHUB_WEBHOOK_SECRET is not configured. Aborting update.")
         raise HTTPException(status_code=500, detail="Update service not configured.")
 
     github_signature = request.headers.get("X-Hub-Signature-256")
     if not github_signature:
-        logging.warning("Request is missing X-Hub-Signature-256 header.")
+        logging.warning("Request is missing X-Hub-Signature-256 header. Aborting.")
         raise HTTPException(status_code=403, detail="Missing signature.")
 
     body = await request.body()
@@ -235,21 +235,25 @@ async def handle_git_update(request: Request):
     expected_signature = "sha256=" + h.hexdigest()
 
     if not hmac.compare_digest(expected_signature, github_signature):
-        logging.error("Invalid GitHub signature.")
+        logging.error("Invalid GitHub signature. Aborting.")
         raise HTTPException(status_code=403, detail="Invalid signature.")
 
     logging.info("GitHub signature verified successfully.")
 
     try:
-        update_script_path = os.path.abspath("scripts/auto-update.sh")
-        os.chmod(update_script_path, 0o755)
+        # Use an absolute path to be safe, assuming the script is in /opt/wix-printer-service/scripts
+        update_script_path = "/opt/wix-printer-service/scripts/auto-update.sh"
         
-        logging.info(f"Executing update script: {update_script_path}")
-        subprocess.Popen([update_script_path])
+        logging.info(f"Executing update script via /bin/bash: {update_script_path}")
         
+        # Use a more robust Popen call, explicitly using bash
+        # This is non-blocking
+        subprocess.Popen(['/bin/bash', update_script_path])
+        
+        logging.info("Update process initiated in the background.")
         return {"status": "success", "message": "Update process initiated."}
     except Exception as e:
-        logging.error(f"Failed to start update script: {e}")
+        logging.error(f"Failed to start update script: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to start update process.")
 
 # --- Web UI & Other Endpoints ---
