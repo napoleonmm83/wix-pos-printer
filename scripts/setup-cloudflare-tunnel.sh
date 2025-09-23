@@ -262,11 +262,35 @@ create_api_token_automatically() {
     fi
     
     log "🔧 Creating dedicated API token for tunnel management..."
-
+    
+    log "DEBUG: Fetching permission group IDs..."
     local zone_read_id zone_dns_edit_id tunnel_edit_id
-    zone_read_id=$(get_permission_group_id "Zone:Zone:Read") || return 1
-    zone_dns_edit_id=$(get_permission_group_id "Zone:DNS:Edit") || return 1
-    tunnel_edit_id=$(get_permission_group_id "Cloudflare Tunnel:Edit") || return 1
+    
+    log "DEBUG: Getting Zone:Zone:Read permission ID..."
+    zone_read_id=$(get_permission_group_id "Zone:Zone:Read")
+    if [[ $? -ne 0 || -z "$zone_read_id" ]]; then
+        error "Failed to get Zone:Zone:Read permission ID"
+        return 1
+    fi
+    log "DEBUG: Zone:Zone:Read ID = $zone_read_id"
+    
+    log "DEBUG: Getting Zone:DNS:Edit permission ID..."
+    zone_dns_edit_id=$(get_permission_group_id "Zone:DNS:Edit")
+    if [[ $? -ne 0 || -z "$zone_dns_edit_id" ]]; then
+        error "Failed to get Zone:DNS:Edit permission ID"
+        return 1
+    fi
+    log "DEBUG: Zone:DNS:Edit ID = $zone_dns_edit_id"
+    
+    log "DEBUG: Getting Cloudflare Tunnel:Edit permission ID..."
+    tunnel_edit_id=$(get_permission_group_id "Cloudflare Tunnel:Edit")
+    if [[ $? -ne 0 || -z "$tunnel_edit_id" ]]; then
+        error "Failed to get Cloudflare Tunnel:Edit permission ID"
+        return 1
+    fi
+    log "DEBUG: Cloudflare Tunnel:Edit ID = $tunnel_edit_id"
+    
+    log "DEBUG: All permission IDs retrieved successfully, creating token..."
 
     # Create API token with minimal required permissions
     API_TOKEN_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/user/tokens" \
