@@ -14,6 +14,9 @@ sudo mkdir -p "$TUNNEL_CONFIG_DIR"
 
 # Correctly write the simplified config file pointing to port 5000
 sudo tee "$TUNNEL_CONFIG_DIR/config.yml" > /dev/null <<EOF
+tunnel: $TUNNEL_ID
+credentials-file: /etc/cloudflared/$TUNNEL_ID.json
+
 ingress:
   - hostname: $FULL_DOMAIN
     service: http://localhost:5000
