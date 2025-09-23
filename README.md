@@ -260,6 +260,7 @@ pytest tests/test_integration.py -v
 - **Zero Manual Intervention** for common issues
 - **Test commit for auto-updater.**
 - **Second test commit for debug logging.**
+- **Final test of the auto-updater.**
 
 ---
 
