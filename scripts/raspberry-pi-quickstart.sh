@@ -192,14 +192,30 @@ log "⚙️ Configuring other service variables..."
 get_or_prompt_var "WIX_API_KEY" "Enter your Wix API Key" "" true
 get_or_prompt_var "WIX_SITE_ID" "Enter your Wix Site ID" ""
 
-echo -e "${BLUE}--- GitHub Auto-Update Setup ---${NC}"
-echo "To enable automatic updates, you need to create a Webhook in your GitHub repository."
-echo "1. Go to your GitHub repo -> Settings -> Webhooks -> Add webhook."
-echo "2. Payload URL: Enter the public URL of this device (e.g., from Cloudflare) followed by /webhook/git-update."
-echo "3. Content type: Set to 'application/json'"
-echo "4. Secret: Generate a strong secret and paste it below."
-echo "   This secret ensures that only GitHub can trigger updates."
-get_or_prompt_var "GITHUB_WEBHOOK_SECRET" "Enter your GitHub Webhook Secret for auto-updates" "" true
+# --- GitHub Webhook Secret ---
+log "🔐 Configuring GitHub Webhook Secret for Auto-Updates..."
+if [ -z "$GITHUB_WEBHOOK_SECRET" ]; then
+    log "No existing secret found. Generating a new one..."
+    GENERATED_SECRET=$(head /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 32)
+    export GITHUB_WEBHOOK_SECRET="$GENERATED_SECRET"
+    update_env_file "GITHUB_WEBHOOK_SECRET" "$GENERATED_SECRET"
+    
+    echo -e "${YELLOW}===================================================================${NC}"
+    echo -e "${YELLOW}ACTION REQUIRED: Copy this secret into your GitHub Webhook settings.${NC}"
+    echo -e "${YELLOW}===================================================================${NC}"
+    echo ""
+    echo -e "Your auto-generated Webhook Secret is:"
+    echo -e "${BLUE}$GENERATED_SECRET${NC}"
+    echo ""
+    echo "1. Go to your GitHub repo -> Settings -> Webhooks"
+    echo "2. Find your webhook (or create a new one)."
+    echo "3. Paste this value into the 'Secret' field."
+    echo ""
+    read -p "Press ENTER to acknowledge and continue..."
+else
+    log "✅ Existing GITHUB_WEBHOOK_SECRET found."
+fi
+
 
 get_or_prompt_var "PRINTER_INTERFACE" "Printer connection type (usb/network)" "usb"
 get_or_prompt_var "PRINTER_IP" "Printer IP address (if network)" "192.168.1.100"
