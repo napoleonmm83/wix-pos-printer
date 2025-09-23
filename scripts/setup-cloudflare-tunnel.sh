@@ -7,9 +7,11 @@ fetch_permission_groups() {
     fi
 
     if [[ -z "$CF_EMAIL" || -z "$CF_GLOBAL_KEY" ]]; then
+        error "DEBUG: CF_EMAIL or CF_GLOBAL_KEY is empty"
         return 1
     fi
 
+    log "DEBUG: Calling Cloudflare permission groups API..."
     CF_PERMISSION_GROUPS_JSON=$(curl -s -X GET "https://api.cloudflare.com/client/v4/user/tokens/permission_groups" \
         -H "X-Auth-Email: $CF_EMAIL" \
         -H "X-Auth-Key: $CF_GLOBAL_KEY" \
@@ -20,13 +22,17 @@ fetch_permission_groups() {
         return 1
     fi
 
+    log "DEBUG: API response length: ${#CF_PERMISSION_GROUPS_JSON} characters"
+    
     if ! echo "$CF_PERMISSION_GROUPS_JSON" | grep -q '"success":true'; then
         error "Unable to fetch Cloudflare permission groups."
+        echo "DEBUG: Full API response:"
         echo "$CF_PERMISSION_GROUPS_JSON"
         CF_PERMISSION_GROUPS_JSON=""
         return 1
     fi
 
+    log "DEBUG: Permission groups fetched successfully"
     return 0
 }
 
