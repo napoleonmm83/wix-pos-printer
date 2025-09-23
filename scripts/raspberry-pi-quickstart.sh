@@ -138,6 +138,13 @@ sudo -u wix-printer bash -c "source venv/bin/activate && pip install -r requirem
 log "⚙️ Phase 5: Smart Configuration..."
 load_env
 
+# Special check to force new DATABASE_URL if old sqlite one is found
+if [[ "$DATABASE_URL" == *"sqlite"* ]]; then
+    warn "Old SQLite DATABASE_URL detected. The new version requires PostgreSQL."
+    warn "You must provide a new PostgreSQL connection string."
+    unset DATABASE_URL
+fi
+
 get_or_prompt_var "DATABASE_URL" "Enter the full database connection URL (e.g., for PostgreSQL)" ""
 get_or_prompt_var "WIX_API_KEY" "Enter your Wix API Key" "" true
 get_or_prompt_var "WIX_SITE_ID" "Enter your Wix Site ID" ""
