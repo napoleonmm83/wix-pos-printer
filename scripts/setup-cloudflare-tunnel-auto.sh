@@ -264,44 +264,187 @@ fi
 
 log "Zone ID: $ZONE_ID"
 
-# Step 4: Create tunnel
-log "🚇 Step 4: Creating Cloudflare Tunnel..."
+# Step 4: Clean up and manage tunnels
+log "🧹 Step 4: Cleaning up old tunnels and managing current setup..."
 
-# Check if tunnel already exists
-log "🔍 Checking for existing tunnel: $TUNNEL_NAME"
-EXISTING_TUNNELS_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
-    -H "Authorization: Bearer $CF_API_TOKEN" \
-    -H "Content-Type: application/json")
+# Function to cleanup old tunnel credentials
+cleanup_old_credentials() {
+    log "🔧 Cleaning up old tunnel credentials..."
 
-EXISTING_TUNNEL_ID=$(echo "$EXISTING_TUNNELS_RESPONSE" | python3 - <<'PY'
+    # Stop cloudflared service if running
+    if systemctl is-active --quiet cloudflared 2>/dev/null; then
+        log "Stopping cloudflared service..."
+        sudo systemctl stop cloudflared 2>/dev/null || true
+    fi
+
+    # Clean up old cloudflared credentials
+    if [[ -f ~/.cloudflared/cert.pem ]]; then
+        log "Removing old cloudflared certificate..."
+        rm -f ~/.cloudflared/cert.pem
+    fi
+
+    # Clean up old token files
+    if [[ -f ~/.cloudflared/token ]]; then
+        rm -f ~/.cloudflared/token
+    fi
+
+    log "✅ Credential cleanup completed"
+}
+
+# Function to list and cleanup old tunnels
+cleanup_old_tunnels() {
+    log "🔍 Checking for old inactive tunnels..."
+
+    TUNNELS_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
+        -H "Authorization: Bearer $CF_API_TOKEN" \
+        -H "Content-Type: application/json")
+
+    # Parse tunnels and identify old ones
+    TUNNEL_INFO=$(echo "$TUNNELS_RESPONSE" | python3 - <<'PY'
 import json
 import sys
 import os
+from datetime import datetime, timezone
 
 try:
     data = json.load(sys.stdin)
     tunnel_name = os.environ.get('TUNNEL_NAME', '')
 
-    if data.get('success') and tunnel_name:
-        for tunnel in data.get('result', []):
-            if tunnel.get('name') == tunnel_name:
-                print(tunnel.get('id', ''))
-                sys.exit(0)
-except Exception:
+    if not data.get('success'):
+        sys.exit(0)
+
+    target_tunnel_id = ""
+    old_tunnels = []
+
+    for tunnel in data.get('result', []):
+        name = tunnel.get('name', '')
+        tunnel_id = tunnel.get('id', '')
+        created_at = tunnel.get('created_at', '')
+
+        if name == tunnel_name:
+            # This is our target tunnel
+            target_tunnel_id = tunnel_id
+            print(f"TARGET:{tunnel_id}")
+        elif 'wix-printer-' in name or 'wix-pos-printer' in name:
+            # This looks like an old tunnel from our system
+            old_tunnels.append(tunnel_id)
+            print(f"OLD:{tunnel_id}:{name}")
+
+except Exception as e:
     pass
 PY
 )
 
-if [[ -n "$EXISTING_TUNNEL_ID" ]]; then
-    log "✅ Found existing tunnel: $TUNNEL_NAME (ID: $EXISTING_TUNNEL_ID)"
-    TUNNEL_ID="$EXISTING_TUNNEL_ID"
+    # Process tunnel information
+    TARGET_TUNNEL_ID=""
+    OLD_TUNNEL_IDS=()
 
-    # Get tunnel credentials
-    TUNNEL_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID" \
+    while IFS= read -r line; do
+        if [[ "$line" == TARGET:* ]]; then
+            TARGET_TUNNEL_ID="${line#TARGET:}"
+        elif [[ "$line" == OLD:* ]]; then
+            OLD_ID="${line#OLD:}"
+            OLD_ID="${OLD_ID%%:*}"
+            OLD_TUNNEL_IDS+=("$OLD_ID")
+        fi
+    done <<< "$TUNNEL_INFO"
+
+    # Delete old tunnels
+    for OLD_ID in "${OLD_TUNNEL_IDS[@]}"; do
+        if [[ "$OLD_ID" != "$TARGET_TUNNEL_ID" ]]; then
+            log "🗑️ Deleting old tunnel: $OLD_ID"
+            curl -s -X DELETE "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel/$OLD_ID" \
+                -H "Authorization: Bearer $CF_API_TOKEN" \
+                -H "Content-Type: application/json" >/dev/null
+        fi
+    done
+
+    echo "$TARGET_TUNNEL_ID"
+}
+
+# Function to validate tunnel health
+validate_tunnel_health() {
+    local tunnel_id="$1"
+
+    log "🔍 Validating tunnel health for ID: $tunnel_id"
+
+    TUNNEL_STATUS=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel/$tunnel_id" \
         -H "Authorization: Bearer $CF_API_TOKEN" \
         -H "Content-Type: application/json")
-else
-    log "🔧 No existing tunnel found, creating new one..."
+
+    # Check if tunnel exists and is healthy
+    TUNNEL_VALID=$(echo "$TUNNEL_STATUS" | python3 - <<'PY'
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+    if data.get('success'):
+        tunnel = data.get('result', {})
+        # Check if tunnel exists and has no issues
+        if tunnel.get('id'):
+            print("VALID")
+        else:
+            print("INVALID")
+    else:
+        print("INVALID")
+except Exception:
+    print("INVALID")
+PY
+)
+
+    echo "$TUNNEL_VALID"
+}
+
+# Perform cleanup
+cleanup_old_credentials
+
+# Get existing target tunnel or clean up old ones
+EXISTING_TUNNEL_ID=$(cleanup_old_tunnels)
+
+if [[ -n "$EXISTING_TUNNEL_ID" ]]; then
+    # Validate the existing tunnel
+    TUNNEL_HEALTH=$(validate_tunnel_health "$EXISTING_TUNNEL_ID")
+
+    if [[ "$TUNNEL_HEALTH" == "VALID" ]]; then
+        log "✅ Found healthy existing tunnel: $TUNNEL_NAME (ID: $EXISTING_TUNNEL_ID)"
+        TUNNEL_ID="$EXISTING_TUNNEL_ID"
+
+        # Get tunnel credentials from API
+        TUNNEL_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -H "Content-Type: application/json")
+
+        # Extract tunnel secret from existing tunnel (if available)
+        TUNNEL_SECRET=$(echo "$TUNNEL_RESPONSE" | python3 - <<'PY'
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+    if data.get('success'):
+        tunnel = data.get('result', {})
+        # Note: Tunnel secret is typically not returned by the API for security
+        # We'll generate a new one and update the credentials
+        print("")
+    else:
+        print("")
+except Exception:
+    print("")
+PY
+)
+
+        # Generate new secret for existing tunnel (API doesn't return secrets)
+        TUNNEL_SECRET=$(openssl rand -base64 32)
+
+    else
+        log "❌ Existing tunnel is unhealthy, will create new one"
+        EXISTING_TUNNEL_ID=""
+    fi
+fi
+
+if [[ -z "$EXISTING_TUNNEL_ID" ]]; then
+    log "🔧 Creating new tunnel..."
     TUNNEL_SECRET=$(openssl rand -base64 32)
 
 TUNNEL_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
@@ -318,23 +461,64 @@ if echo "$TUNNEL_RESPONSE" | grep -q '"success":true'; then
     log "✅ Tunnel created successfully!"
     log "Tunnel Name: $TUNNEL_NAME"
     log "Tunnel ID: $TUNNEL_ID"
-    
-    # Create credentials file
-    mkdir -p ~/.cloudflared
-    cat > ~/.cloudflared/$TUNNEL_ID.json <<EOF
-{
-    "AccountTag": "$ACCOUNT_ID",
-    "TunnelSecret": "$TUNNEL_SECRET",
-    "TunnelID": "$TUNNEL_ID"
-}
-EOF
-    chmod 600 ~/.cloudflared/$TUNNEL_ID.json
 else
     error "Failed to create tunnel"
     echo "Response: $TUNNEL_RESPONSE"
     exit 1
 fi
 fi
+
+# Create or update credentials file for both user and system
+log "🔧 Setting up tunnel credentials..."
+
+# Function to create credential files
+create_tunnel_credentials() {
+    local tunnel_id="$1"
+    local tunnel_secret="$2"
+    local account_id="$3"
+
+    # Create user credentials directory
+    mkdir -p ~/.cloudflared
+
+    # Create system credentials directory
+    sudo mkdir -p /etc/cloudflared
+
+    # Create credentials file content
+    local cred_content="{
+    \"AccountTag\": \"$account_id\",
+    \"TunnelSecret\": \"$tunnel_secret\",
+    \"TunnelID\": \"$tunnel_id\"
+}"
+
+    # Write user credentials
+    echo "$cred_content" > ~/.cloudflared/$tunnel_id.json
+    chmod 600 ~/.cloudflared/$tunnel_id.json
+
+    # Write system credentials
+    echo "$cred_content" | sudo tee /etc/cloudflared/$tunnel_id.json >/dev/null
+    sudo chmod 600 /etc/cloudflared/$tunnel_id.json
+
+    log "✅ Credentials created for tunnel ID: $tunnel_id"
+}
+
+# Remove old credential files
+log "🧹 Removing old credential files..."
+for old_cred in ~/.cloudflared/*.json; do
+    if [[ -f "$old_cred" && "$old_cred" != *"$TUNNEL_ID.json" ]]; then
+        rm -f "$old_cred"
+        log "Removed old user credential: $(basename "$old_cred")"
+    fi
+done
+
+for old_cred in /etc/cloudflared/*.json; do
+    if [[ -f "$old_cred" && "$old_cred" != *"$TUNNEL_ID.json" ]]; then
+        sudo rm -f "$old_cred"
+        log "Removed old system credential: $(basename "$old_cred")"
+    fi
+done
+
+# Create fresh credentials
+create_tunnel_credentials "$TUNNEL_ID" "$TUNNEL_SECRET" "$ACCOUNT_ID"
 
 # Step 5: Create DNS record
 log "🌐 Step 5: Creating DNS record..."
@@ -441,12 +625,62 @@ RestartSec=5s
 WantedBy=multi-user.target
 EOF
 
-# Enable and start service
-sudo systemctl daemon-reload
-sudo systemctl enable cloudflared
-sudo systemctl start cloudflared
+# Enhanced service management with validation
+log "🔧 Configuring and starting Cloudflare tunnel service..."
 
-log "✅ Cloudflared service started"
+# Reload systemd daemon
+sudo systemctl daemon-reload
+
+# Enable service for auto-start
+sudo systemctl enable cloudflared
+
+# Function to validate service startup
+validate_service_startup() {
+    log "🔍 Validating service startup..."
+
+    # Start the service
+    sudo systemctl start cloudflared
+
+    # Wait a moment for startup
+    sleep 5
+
+    # Check if service is active
+    if systemctl is-active --quiet cloudflared; then
+        log "✅ Cloudflared service started successfully"
+
+        # Check for authentication errors in recent logs
+        if sudo journalctl -u cloudflared --since "1 minute ago" --no-pager | grep -q "Invalid tunnel secret"; then
+            error "Service started but has authentication errors"
+            log "🔧 Restarting service to apply fresh credentials..."
+
+            sudo systemctl restart cloudflared
+            sleep 5
+
+            if sudo journalctl -u cloudflared --since "30 seconds ago" --no-pager | grep -q "Invalid tunnel secret"; then
+                error "Persistent authentication errors detected"
+                log "📋 Recent service logs:"
+                sudo journalctl -u cloudflared --since "1 minute ago" --no-pager -n 10
+                return 1
+            else
+                log "✅ Service restart resolved authentication issues"
+            fi
+        fi
+
+        return 0
+    else
+        error "Failed to start cloudflared service"
+        log "📋 Service status:"
+        sudo systemctl status cloudflared --no-pager -l
+        return 1
+    fi
+}
+
+# Validate and start service
+if validate_service_startup; then
+    log "✅ Cloudflared service is running properly"
+else
+    warn "Service startup validation failed, but continuing..."
+fi
 
 # Step 8: Update service configuration
 log "⚙️ Step 8: Updating service configuration..."

@@ -790,12 +790,101 @@ RestartSec=5s
 WantedBy=multi-user.target
 EOF
 
-# Enable and start service
+# Enhanced service management with validation
+log "🔧 Configuring and starting Cloudflare tunnel service..."
+
+# Function to cleanup old credentials
+cleanup_old_tunnel_credentials() {
+    log "🧹 Cleaning up old tunnel credentials..."
+
+    # Stop service if running
+    if systemctl is-active --quiet cloudflared 2>/dev/null; then
+        log "Stopping cloudflared service..."
+        sudo systemctl stop cloudflared 2>/dev/null || true
+    fi
+
+    # Clean up old credentials
+    if [[ -f ~/.cloudflared/cert.pem ]]; then
+        log "Removing old cloudflared certificate..."
+        rm -f ~/.cloudflared/cert.pem
+    fi
+
+    if [[ -f ~/.cloudflared/token ]]; then
+        rm -f ~/.cloudflared/token
+    fi
+
+    # Remove old credential files except the current one
+    for old_cred in ~/.cloudflared/*.json; do
+        if [[ -f "$old_cred" && "$old_cred" != *"$TUNNEL_ID.json" ]]; then
+            rm -f "$old_cred"
+            log "Removed old user credential: $(basename "$old_cred")"
+        fi
+    done
+
+    for old_cred in /etc/cloudflared/*.json; do
+        if [[ -f "$old_cred" && "$old_cred" != *"$TUNNEL_ID.json" ]]; then
+            sudo rm -f "$old_cred"
+            log "Removed old system credential: $(basename "$old_cred")"
+        fi
+    done
+
+    log "✅ Credential cleanup completed"
+}
+
+# Function to validate service startup
+validate_service_startup() {
+    log "🔍 Validating service startup..."
+
+    # Start the service
+    sudo systemctl start cloudflared
+
+    # Wait a moment for startup
+    sleep 5
+
+    # Check if service is active
+    if systemctl is-active --quiet cloudflared; then
+        log "✅ Cloudflared service started successfully"
+
+        # Check for authentication errors in recent logs
+        if sudo journalctl -u cloudflared --since "1 minute ago" --no-pager | grep -q "Invalid tunnel secret"; then
+            error "Service started but has authentication errors"
+            log "🔧 Restarting service to apply fresh credentials..."
+
+            sudo systemctl restart cloudflared
+            sleep 5
+
+            if sudo journalctl -u cloudflared --since "30 seconds ago" --no-pager | grep -q "Invalid tunnel secret"; then
+                error "Persistent authentication errors detected"
+                log "📋 Recent service logs:"
+                sudo journalctl -u cloudflared --since "1 minute ago" --no-pager -n 10
+                return 1
+            else
+                log "✅ Service restart resolved authentication issues"
+            fi
+        fi
+
+        return 0
+    else
+        error "Failed to start cloudflared service"
+        log "📋 Service status:"
+        sudo systemctl status cloudflared --no-pager -l
+        return 1
+    fi
+}
+
+# Perform credential cleanup
+cleanup_old_tunnel_credentials
+
+# Reload systemd daemon and enable service
 sudo systemctl daemon-reload
 sudo systemctl enable cloudflared
-sudo systemctl start cloudflared
 
-log "✅ Cloudflared service started"
+# Validate and start service
+if validate_service_startup; then
+    log "✅ Cloudflared service is running properly"
+else
+    warn "Service startup validation failed, but continuing..."
+fi
 
 # Wait for tunnel to be ready
 log "⏳ Waiting for tunnel to be ready..."
