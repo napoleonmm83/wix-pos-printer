@@ -134,35 +134,7 @@ cd /opt/wix-printer-service
 sudo -u wix-printer python3 -m venv venv
 sudo -u wix-printer bash -c "source venv/bin/activate && pip install -r requirements.txt"
 
-# Phase 5: Smart Configuration
-log "⚙️ Phase 5: Smart Configuration..."
-load_env
-
-# Special check to force new DATABASE_URL if old sqlite one is found
-if [[ "$DATABASE_URL" == *"sqlite"* ]]; then
-    warn "Old SQLite DATABASE_URL detected. The new version requires PostgreSQL."
-    warn "You must provide a new PostgreSQL connection string."
-    unset DATABASE_URL
-fi
-
-get_or_prompt_var "DATABASE_URL" "Enter the full database connection URL (e.g., for PostgreSQL)" ""
-get_or_prompt_var "WIX_API_KEY" "Enter your Wix API Key" "" true
-get_or_prompt_var "WIX_SITE_ID" "Enter your Wix Site ID" ""
-get_or_prompt_var "PRINTER_INTERFACE" "Printer connection type (usb/network)" "usb"
-get_or_prompt_var "PRINTER_IP" "Printer IP address (if network)" "192.168.1.100"
-get_or_prompt_var "SERVICE_PORT" "Service port for the main application" "8000"
-get_or_prompt_var "LOG_LEVEL" "Log level (DEBUG, INFO, WARNING, ERROR)" "INFO"
-get_or_prompt_var "NOTIFICATION_ENABLED" "Enable email notifications? (true/false)" "false"
-
-if [ "$NOTIFICATION_ENABLED" = "true" ]; then
-    get_or_prompt_var "SMTP_SERVER" "SMTP Server address" "smtp.gmail.com"
-    get_or_prompt_var "SMTP_PORT" "SMTP Port" "587"
-    get_or_prompt_var "SMTP_USERNAME" "SMTP Username (your email)" ""
-    get_or_prompt_var "SMTP_PASSWORD" "SMTP Password (or App Password)" "" true
-    get_or_prompt_var "NOTIFICATION_TO_EMAILS" "Email address to send alerts to" ""
-fi
-
-log "✅ Configuration check complete."
+# Phase 5: Smart Configuration & DB Test\nlog \"⚙️ Phase 5: Smart Configuration & DB Test...\"\nload_env\n\n# Function to test the database connection\ntest_db_connection() {\n    log \"🧪 Testing database connection...\"\n    local test_script=\"\nimport os, sys, psycopg2\nfrom dotenv import load_dotenv\nload_dotenv()\ndb_url = os.environ.get(\'DATABASE_URL\')\nif not db_url:\n    print(\'ERROR: DATABASE_URL not found in environment.\', file=sys.stderr)\n    sys.exit(1)\ntry:\n    conn = psycopg2.connect(db_url)\n    conn.close()\n    sys.exit(0)\nexcept Exception as e:\n    print(f\'Connection Error: {e}\', file=sys.stderr)\n    sys.exit(1)\n\"\n    if sudo -u wix-printer bash -c \"source venv/bin/activate && export \\\$(grep -v \'^#\' .env | xargs) && python -c \\\"\$test_script\\\"\"; then\n        return 0 # Success\n    else\n        return 1 # Failure\n    fi\n}\n\n# Special check to force new DATABASE_URL if old sqlite one is found\nif [[ \"$DATABASE_URL\" == *\"sqlite\"* ]]; then\n    warn \"Old SQLite DATABASE_URL detected. The new version requires PostgreSQL.\"\n    warn \"You must provide a new PostgreSQL connection string.\"\n    unset DATABASE_URL\nfi\n\n# Prompt for DATABASE_URL with validation and connection test\nwhile true; do\n    get_or_prompt_var \"DATABASE_URL\" \"Enter the full PostgreSQL connection URL\" \"\"\n    if [[ \"$DATABASE_URL\" == \"postgresql://\"* ]]; then\n        log \"✅ DATABASE_URL format is valid. Now testing connection...\"\n        if test_db_connection; then\n            log \"✅ Database connection successful!\"\n            break\n        else\n            error \"Connection failed. Please check the URL, firewall, and database status.\"\n            unset DATABASE_URL\n            update_env_file \"DATABASE_URL\" \"\"\n        fi\n    else\n        error \"Invalid format. The URL must start with \'postgresql://\'\"\n        warn \"Please paste the full URL provided by Railway.\"\n        unset DATABASE_URL\n        update_env_file \"DATABASE_URL\" \"\"\n    fi\ndone\n\nget_or_prompt_var \"WIX_API_KEY\" \"Enter your Wix API Key\" \"\" true\nget_or_prompt_var \"WIX_SITE_ID\" \"Enter your Wix Site ID\" \"\"\nget_or_prompt_var \"PRINTER_INTERFACE\" \"Printer connection type (usb/network)\" \"usb\"\nget_or_prompt_var \"PRINTER_IP\" \"Printer IP address (if network)\" \"192.168.1.100\"\nget_or_prompt_var \"SERVICE_PORT\" \"Service port for the main application\" \"8000\"\nget_or_prompt_var \"LOG_LEVEL\" \"Log level (DEBUG, INFO, WARNING, ERROR)\" \"INFO\"\nget_or_prompt_var \"NOTIFICATION_ENABLED\" \"Enable email notifications? (true/false)\" \"false\"\n\nif [ \"$NOTIFICATION_ENABLED\" = \"true\" ]; then\n    get_or_prompt_var \"SMTP_SERVER\" \"SMTP Server address\" \"smtp.gmail.com\"\n    get_or_prompt_var \"SMTP_PORT\" \"SMTP Port\" \"587\"\n    get_or_prompt_var \"SMTP_USERNAME\" \"SMTP Username (your email)\" \"\"\n    get_or_prompt_var \"SMTP_PASSWORD\" \"SMTP Password (or App Password)\" \"\" true\n    get_or_prompt_var \"NOTIFICATION_TO_EMAILS\" \"Email address to send alerts to\" \"\"\nfi\n\nlog \"✅ Configuration check complete.\"
 
 # Phase 6: Database Initialization
 log "🗄️ Phase 6: Initializing database schema..."
