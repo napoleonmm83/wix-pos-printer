@@ -323,46 +323,55 @@ create_api_token_automatically() {
     
     log "DEBUG: All permission IDs retrieved successfully, creating token..."
 
+    local token_payload_file
+    token_payload_file=$(mktemp)
+    trap '[[ -n "$token_payload_file" && -f "$token_payload_file" ]] && rm -f "$token_payload_file"' RETURN
+
+    log "DEBUG: Writing token payload to $token_payload_file"
+    cat > "$token_payload_file" <<EOF
+{
+  "name": "Wix Printer Tunnel - $(date -u +%Y%m%d-%H%M%S)",
+  "policies": [
+    {
+      "effect": "allow",
+      "resources": {
+        "com.cloudflare.api.account.zone.*": "*"
+      },
+      "permission_groups": [
+        {
+          "id": "$zone_read_id",
+          "name": "Zone Read"
+        },
+        {
+          "id": "$zone_dns_edit_id",
+          "name": "DNS Write"
+        }
+      ]
+    },
+    {
+      "effect": "allow",
+      "resources": {
+        "com.cloudflare.api.account.*": "*"
+      },
+      "permission_groups": [
+        {
+          "id": "$tunnel_edit_id",
+          "name": "Cloudflare Tunnel Write"
+        }
+      ]
+    }
+  ],
+  "not_before": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "expires_on": "$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+
     # Create API token with minimal required permissions
     API_TOKEN_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/user/tokens" \
         -H "X-Auth-Email: $CF_EMAIL" \
         -H "X-Auth-Key: $CF_GLOBAL_KEY" \
         -H "Content-Type: application/json" \
-        --data '{
-            "name": "Wix Printer Tunnel - '"$(date +%Y%m%d-%H%M%S)"'",
-            "policies": [
-                {
-                    "effect": "allow",
-                    "resources": {
-                        "com.cloudflare.api.account.zone.*": "*"
-                    },
-                    "permission_groups": [
-                        {
-                            "id": "'"$zone_read_id"'",
-                            "name": "Zone:Zone:Read"
-                        },
-                        {
-                            "id": "'"$zone_dns_edit_id"'",
-                            "name": "Zone:DNS:Edit"
-                        }
-                    ]
-                },
-                {
-                    "effect": "allow",
-                    "resources": {
-                        "com.cloudflare.api.account.*": "*"
-                    },
-                    "permission_groups": [
-                        {
-                            "id": "'"$tunnel_edit_id"'",
-                            "name": "Cloudflare Tunnel:Edit"
-                        }
-                    ]
-                }
-            ],
-            "not_before": "'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'",
-            "expires_on": "'"$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ)"'"
-        }')
+        --data @"$token_payload_file")
     
     # Check if token creation was successful
     if echo "$API_TOKEN_RESPONSE" | grep -q '"success":true'; then
@@ -396,6 +405,8 @@ EOF
         fi
     else
         error "Failed to create API token"
+        error "Token payload was:"
+        cat "$token_payload_file" >&2
         echo "$API_TOKEN_RESPONSE"
         return 1
     fi
