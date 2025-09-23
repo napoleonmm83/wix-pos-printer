@@ -187,7 +187,25 @@ while true; do
     sleep 1
 done
 
-# --- Prompt for other variables ---\nlog \"⚙️ Configuring other service variables...\"\nget_or_prompt_var \"WIX_API_KEY\" \"Enter your Wix API Key\" \"\" true\nget_or_prompt_var \"WIX_SITE_ID\" \"Enter your Wix Site ID\" \"\"\necho -e "${BLUE}--- GitHub Auto-Update Setup ---${NC}"\necho "To enable automatic updates, you need to create a Webhook in your GitHub repository."\necho "1. Go to your GitHub repo -> Settings -> Webhooks -> Add webhook."\necho "2. Payload URL: Enter the public URL of this device (e.g., from Cloudflare) followed by /webhook/git-update."\necho "3. Content type: Set to 'application/json'"\necho "4. Secret: Generate a strong secret and paste it below."\necho "   This secret ensures that only GitHub can trigger updates."\nget_or_prompt_var "GITHUB_WEBHOOK_SECRET" "Enter your GitHub Webhook Secret for auto-updates" "" true\nget_or_prompt_var \"PRINTER_INTERFACE\" \"Printer connection type (usb/network)\" \"usb\"\nget_or_prompt_var \"PRINTER_IP\" \"Printer IP address (if network)\" \"192.168.1.100\"\nget_or_prompt_var \"SERVICE_PORT\" \"Service port for the main application\" \"8000\"\nget_or_prompt_var \"LOG_LEVEL\" \"Log level (DEBUG, INFO, WARNING, ERROR)\" \"INFO\"\nget_or_prompt_var \"NOTIFICATION_ENABLED\" \"Enable email notifications? (true/false)\" \"false\"
+# --- Prompt for other variables ---
+log "⚙️ Configuring other service variables..."
+get_or_prompt_var "WIX_API_KEY" "Enter your Wix API Key" "" true
+get_or_prompt_var "WIX_SITE_ID" "Enter your Wix Site ID" ""
+
+echo -e "${BLUE}--- GitHub Auto-Update Setup ---${NC}"
+echo "To enable automatic updates, you need to create a Webhook in your GitHub repository."
+echo "1. Go to your GitHub repo -> Settings -> Webhooks -> Add webhook."
+echo "2. Payload URL: Enter the public URL of this device (e.g., from Cloudflare) followed by /webhook/git-update."
+echo "3. Content type: Set to 'application/json'"
+echo "4. Secret: Generate a strong secret and paste it below."
+echo "   This secret ensures that only GitHub can trigger updates."
+get_or_prompt_var "GITHUB_WEBHOOK_SECRET" "Enter your GitHub Webhook Secret for auto-updates" "" true
+
+get_or_prompt_var "PRINTER_INTERFACE" "Printer connection type (usb/network)" "usb"
+get_or_prompt_var "PRINTER_IP" "Printer IP address (if network)" "192.168.1.100"
+get_or_prompt_var "SERVICE_PORT" "Service port for the main application" "8000"
+get_or_prompt_var "LOG_LEVEL" "Log level (DEBUG, INFO, WARNING, ERROR)" "INFO"
+get_or_prompt_var "NOTIFICATION_ENABLED" "Enable email notifications? (true/false)" "false"
 
 if [ "$NOTIFICATION_ENABLED" = "true" ]; then
     get_or_prompt_var "SMTP_SERVER" "SMTP Server address" "smtp.gmail.com"
