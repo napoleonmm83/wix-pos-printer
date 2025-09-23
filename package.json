@@ -1,0 +1,11 @@
+{
+  "name": "wix-pos-order-service",
+  "version": "1.0.0",
+  "description": "An autonomous printing service for Wix restaurant orders with self-healing capabilities.",
+  "scripts": {
+    "release": "standard-version"
+  },
+  "devDependencies": {
+    "standard-version": "^9.5.0"
+  }
+}

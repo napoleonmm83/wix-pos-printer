@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import asyncio
+import subprocess
 from datetime import datetime, timedelta
 from typing import Optional
 from contextlib import contextmanager
@@ -44,6 +45,7 @@ WIX_API_BASE_URL = os.environ.get("WIX_API_BASE_URL", "https://www.wixapis.com")
 AUTO_CHECK_ENABLED = os.environ.get("AUTO_CHECK_ENABLED", "true").lower() == "true"
 AUTO_CHECK_INTERVAL = int(os.environ.get("AUTO_CHECK_INTERVAL", "30"))
 AUTO_CHECK_HOURS_BACK = int(os.environ.get("AUTO_CHECK_HOURS_BACK", "1"))
+GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET")
 
 auto_check_running = False
 
@@ -132,9 +134,6 @@ async def shutdown_event():
         logging.info("Auto-check task stopped")
     logging.info("Application shutdown complete")
 
-# The rest of the file (Wix API helpers, background tasks, and endpoints) remains largely the same
-# as it does not directly interact with the database connection logic.
-
 # --- Wix API Helper Functions ---
 async def fetch_wix_orders(from_date: Optional[str] = None, to_date: Optional[str] = None, limit: int = 50):
     if not WIX_API_KEY or not WIX_SITE_ID:
@@ -215,13 +214,48 @@ async def handle_webhook(request: Request):
     # ...
     return JSONResponse(content={"status": "success"}, status_code=200)
 
+# --- Auto-Update Webhook Endpoint ---
+@app.post("/webhook/git-update")
+async def handle_git_update(request: Request):
+    """Receives a webhook from GitHub to trigger an auto-update."""
+    logging.info("Git update webhook received.")
+
+    if not GITHUB_WEBHOOK_SECRET:
+        logging.error("GITHUB_WEBHOOK_SECRET is not configured. Aborting update.")
+        raise HTTPException(status_code=500, detail="Update service not configured.")
+
+    github_signature = request.headers.get("X-Hub-Signature-256")
+    if not github_signature:
+        logging.warning("Request is missing X-Hub-Signature-256 header.")
+        raise HTTPException(status_code=403, detail="Missing signature.")
+
+    body = await request.body()
+    
+    h = hmac.new(GITHUB_WEBHOOK_SECRET.encode(), body, hashlib.sha256)
+    expected_signature = "sha256=" + h.hexdigest()
+
+    if not hmac.compare_digest(expected_signature, github_signature):
+        logging.error("Invalid GitHub signature.")
+        raise HTTPException(status_code=403, detail="Invalid signature.")
+
+    logging.info("GitHub signature verified successfully.")
+
+    try:
+        update_script_path = os.path.abspath("scripts/auto-update.sh")
+        os.chmod(update_script_path, 0o755)
+        
+        logging.info(f"Executing update script: {update_script_path}")
+        subprocess.Popen([update_script_path])
+        
+        return {"status": "success", "message": "Update process initiated."}
+    except Exception as e:
+        logging.error(f"Failed to start update script: {e}")
+        raise HTTPException(status_code=500, detail="Failed to start update process.")
+
 # --- Web UI & Other Endpoints ---
 @app.get('/')
 async def get_reprint_ui(request: Request):
-    # This UI might need adjustment if it reads from a table not in this file
     return templates.TemplateResponse("reprint.html", {"request": request, "orders": []})
-
-# Other endpoints from the original file would follow here...
 
 # --- Health Check Endpoint ---
 @app.get('/health')
