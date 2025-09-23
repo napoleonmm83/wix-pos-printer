@@ -58,8 +58,8 @@ while true; do
         1)
             log "🚀 Starting Cloudflare Tunnel Setup..."
             echo ""
-            if [ -f "$SCRIPT_DIR/setup-cloudflare-tunnel-simple.sh" ]; then
-                exec "$SCRIPT_DIR/setup-cloudflare-tunnel-simple.sh"
+            if [ -f "$SCRIPT_DIR/setup-cloudflare-tunnel.sh" ]; then
+                exec "$SCRIPT_DIR/setup-cloudflare-tunnel.sh"
             else
                 error "Cloudflare tunnel script not found!"
                 exit 1
