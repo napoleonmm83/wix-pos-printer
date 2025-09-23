@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Auto-Update Script for Wix Printer Service
+# Auto-Update Script for Wix Printer Service (DEBUGGING VERSION)
 # This script is triggered by a webhook from GitHub.
 
 LOG_FILE="/opt/wix-printer-service/logs/auto-update.log"
@@ -16,30 +16,36 @@ log() {
 exec >> "$LOG_FILE" 2>&1
 
 log "========================================="
-log "🚀 Auto-Update process started..."
+log "🚀 DEBUG: Auto-Update process started..."
 log "========================================="
 
-# Navigate to the service directory
-cd "$SERVICE_DIR" || { log "ERROR: Service directory $SERVICE_DIR not found."; exit 1; }
+log "Executing: cd $SERVICE_DIR"
+cd "$SERVICE_DIR" || { log "FATAL: Service directory $SERVICE_DIR not found."; exit 1; }
+log "Finished: cd"
 
-# Fetch and reset to the latest version from the main branch
-log "Fetching latest code from origin/main..."
+log "Executing: git fetch origin"
 git fetch origin
+log "Finished: git fetch origin"
+
+log "Executing: git reset --hard origin/main"
 git reset --hard origin/main
-log "✅ Code updated successfully."
+log "Finished: git reset --hard origin/main"
 
-# Install/update Python dependencies
-log "Checking for new Python dependencies..."
-# Ensure the virtual environment is activated correctly
+log "Executing: source venv/bin/activate"
 source "$SERVICE_DIR/venv/bin/activate"
+log "Finished: sourcing venv"
+
+log "Executing: pip install -r requirements.txt"
 pip install -r "$SERVICE_DIR/requirements.txt"
-log "✅ Python dependencies are up to date."
+log "Finished: pip install"
 
-# Restart the systemd services
-log "Restarting services..."
+log "Executing: sudo systemctl restart wix-printer.service"
 sudo systemctl restart wix-printer.service
-sudo systemctl restart wix-printer-app.service
-log "✅ Services restarted."
+log "Finished: restart wix-printer.service"
 
-log "🎉 Auto-Update process finished successfully."
-echo # Add a final newline for log readability
+log "Executing: sudo systemctl restart wix-printer-app.service"
+sudo systemctl restart wix-printer-app.service
+log "Finished: restart wix-printer-app.service"
+
+log "🎉 DEBUG: Auto-Update process finished successfully."
+echo
