@@ -235,10 +235,6 @@ create_api_token_automatically() {
                     ]
                 }
             ],
-            "condition": {
-                "request_ip": {},
-                "request_ip_in": []
-            },
             "not_before": "'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'",
             "expires_on": "'"$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ)"'"
         }')
