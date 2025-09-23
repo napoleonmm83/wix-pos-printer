@@ -61,16 +61,27 @@ if len(sys.argv) < 3:
 name = sys.argv[1]
 file_path = sys.argv[2]
 
+NAME_ALIASES = {
+    "Zone:Zone:Read": ["Zone:Zone:Read", "Zone Read"],
+    "Zone:DNS:Edit": ["Zone:DNS:Edit", "DNS Write", "DNS Edit"],
+    "Cloudflare Tunnel:Edit": ["Cloudflare Tunnel:Edit", "Cloudflare Tunnel Write", "Cloudflare Tunnel Read"],
+}
+
 try:
     with open(file_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 except Exception:
     sys.exit(1)
 
-for item in data.get("result", []):
-    if item.get("name") == name:
-        print(item.get("id", ""))
-        break
+aliases = NAME_ALIASES.get(name, [name])
+
+for candidate in aliases:
+    for item in data.get("result", []):
+        if item.get("name") == candidate:
+            print(item.get("id", ""))
+            sys.exit(0)
+
+sys.exit(1)
 PY
 )
 
