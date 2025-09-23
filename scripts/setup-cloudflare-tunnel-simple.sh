@@ -578,42 +578,9 @@ tunnel: $TUNNEL_ID
 credentials-file: /etc/cloudflared/$TUNNEL_ID.json
 
 ingress:
-  # Webhook endpoint with special handling
   - hostname: $FULL_DOMAIN
-    path: /webhook/*
-    service: http://localhost:8000
-    originRequest:
-      httpHostHeader: $FULL_DOMAIN
-      connectTimeout: 10s
-      tlsTimeout: 10s
-      tcpKeepAlive: 30s
-      keepAliveTimeout: 90s
-      keepAliveConnections: 10
-  
-  # Health check endpoint
-  - hostname: $FULL_DOMAIN
-    path: /health
-    service: http://localhost:8000
-    originRequest:
-      httpHostHeader: $FULL_DOMAIN
-  
-  # All other endpoints
-  - hostname: $FULL_DOMAIN
-    service: http://localhost:8000
-    originRequest:
-      httpHostHeader: $FULL_DOMAIN
-      connectTimeout: 30s
-      tlsTimeout: 10s
-      tcpKeepAlive: 30s
-      keepAliveTimeout: 90s
-      keepAliveConnections: 10
-  
-  # Catch-all rule (required)
+    service: http://localhost:5000
   - service: http_status:404
-
-# Logging
-loglevel: info
-logfile: /var/log/cloudflared.log
 EOF
 
 # Copy tunnel credentials
