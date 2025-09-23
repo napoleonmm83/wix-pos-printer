@@ -60,12 +60,16 @@ update_env_file() {
     local value=$2
     local env_file=".env"
 
-    touch $env_file
+    # Use sudo to touch and modify the file, then ensure correct ownership
+    sudo touch "$env_file"
+    sudo chown wix-printer:wix-printer "$env_file"
 
     if grep -q "^${key}=" "$env_file"; then
-        sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+        # Use sudo with sed to replace the line
+        sudo sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
     else
-        echo "${key}=${value}" >> "$env_file"
+        # Use sudo with tee to append the line
+        echo "${key}=${value}" | sudo tee -a "$env_file" > /dev/null
     fi
 }
 
