@@ -160,26 +160,6 @@ def get_print_manager() -> PrintManager:
     return print_manager
 
 
-def create_app():
-    app = FastAPI(
-        title="Wix Printer Service",
-        description="Automated printing service for Wix orders on Raspberry Pi",
-        version="1.0.0",
-        docs_url="/docs",
-        redoc_url="/redoc"
-    )
-
-    @app.get("/health", tags=["Monitoring"], response_model=dict)
-    def health_check():
-        """
-        Health check endpoint to confirm the service is running and accessible.
-        
-        Returns:
-            dict: Status information with "ok" status
-        """
-        logger.info("Health check requested")
-        return {"status": "ok"}
-
-    return app
+from pydantic import BaseModel, Field\n\n# ... (existing imports)\n\n# Pydantic models for the request body\nclass WixWebhookPayload(BaseModel):\n    orderId: str = Field(..., description=\"The unique identifier for the Wix order.\")\n\nclass WebhookData(BaseModel):\n    data: WixWebhookPayload\n    metadata: Optional[Dict[str, Any]] = None\n\n# ... (existing code)\n\ndef create_app():\n    app = FastAPI(\n        title=\"Wix Printer Service\",\n        description=\"Automated printing service for Wix orders on Raspberry Pi\",\n        version=\"1.0.0\",\n        docs_url=\"/docs\",\n        redoc_url=\"/redoc\"\n    )\n\n    @app.get(\"/health\", tags=[\"Monitoring\"], response_model=dict)\n    def health_check():\n        \"\"\"\n        Health check endpoint to confirm the service is running and accessible.\n        \n        Returns:\n            dict: Status information with \"ok\" status\n        \"\"\"\n        logger.info(\"Health check requested\")\n        return {\"status\": \"ok\"}\n\n    @app.post(\"/jobs/wix\", status_code=202, tags=[\"Jobs\"])\n    def queue_wix_order_job(\n        payload: WebhookData,\n        order_service: OrderService = Depends(get_order_service),\n        wix_client: WixClient = Depends(get_wix_client)\n    ):\n        wix_order_id = payload.data.orderId\n        logger.info(f\"Received job request for Wix Order ID: {wix_order_id}\")\n\n        if not wix_client:\n            raise HTTPException(status_code=503, detail=\"Wix client is not available.\")\n\n        try:\n            # Fetch the full order data from Wix API\n            order_data = wix_client.get_order(wix_order_id)\n            if not order_data:\n                raise HTTPException(status_code=404, detail=f\"Order {wix_order_id} not found on Wix.\")\n\n            # Ingest the order using the order service\n            result = order_service.ingest_order_from_api(order_data)\n            \n            if result.get(\"error\"):\n                logger.error(f\"Failed to ingest order {wix_order_id}: {result.get(\'error\')}\")\n                raise HTTPException(status_code=422, detail=result.get(\'error\))\n\n            logger.info(f\"Successfully processed job for order {wix_order_id}. Result: {result}\")\n            return {\n                \"message\": \"Job accepted and processed\",\n                \"order_id\": result.get(\"order_id\"),\n                \"wix_order_id\": wix_order_id,\n                \"jobs_created\": result.get(\"created_jobs\", 0),\n                \"was_existing\": result.get(\"existing\", False)\n            }\n        except HTTPException:\n            raise # Re-raise HTTP exceptions directly\n        except Exception as e:\n            logger.error(f\"An unexpected error occurred while processing job for order {wix_order_id}: {e}\", exc_info=True)\n            raise HTTPException(status_code=500, detail=\"An internal error occurred.\")\n\n    return app
 
 app = create_app()
