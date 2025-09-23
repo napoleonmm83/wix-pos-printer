@@ -12,3 +12,4 @@ anyio==3.7.1
 httpx
 jinja2
 python-multipart
+psycopg2-binary

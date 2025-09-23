@@ -1,13 +1,15 @@
 """
 Database management for the Wix Printer Service.
-Handles SQLite database initialization and CRUD operations.
+Handles PostgreSQL database initialization and CRUD operations using psycopg2.
 """
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import logging
 import json
+import os
+from contextlib import contextmanager
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pathlib import Path
 
 from .models import Order, PrintJob, OrderStatus, PrintJobStatus, OrderItem, CustomerInfo, DeliveryInfo
 
@@ -21,327 +23,272 @@ class DatabaseError(Exception):
 
 class Database:
     """
-    SQLite database manager for orders and print jobs.
+    PostgreSQL database manager for orders and print jobs.
     Handles database initialization, connections, and CRUD operations.
     """
     
-    def __init__(self, db_path: str = "wix_printer_service.db"):
+    def __init__(self):
         """
-        Initialize database connection and create tables if needed.
+        Initialize database connection URL and ensure tables are created.
+        """
+        self.db_url = os.environ.get("DATABASE_URL")
+        if not self.db_url:
+            raise DatabaseError("DATABASE_URL environment variable not set.")
         
-        Args:
-            db_path: Path to SQLite database file
-        """
-        self.db_path = db_path
-        self.connection = None
         self._initialize_database()
-        logger.info(f"Database initialized at {db_path}")
+        logger.info("Database initialized with PostgreSQL.")
     
-    def _initialize_database(self):
-        """Create database tables if they don't exist."""
+    @contextmanager
+    def get_connection(self):
+        """Provide a transactional scope around a series of operations."""
+        conn = None
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute("PRAGMA foreign_keys = ON")
+            conn = psycopg2.connect(self.db_url)
+            yield conn
+            conn.commit()
+        except (psycopg2.Error, Exception) as e:
+            logger.error(f"Database transaction failed: {e}")
+            if conn:
+                conn.rollback()
+            raise DatabaseError(f"Database transaction failed: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+    def _initialize_database(self):
+        """Create database tables if they don't exist using PostgreSQL syntax."""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Create orders table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS orders (
+                            id TEXT PRIMARY KEY,
+                            wix_order_id TEXT UNIQUE NOT NULL,
+                            status TEXT NOT NULL,
+                            items_json JSONB NOT NULL,
+                            customer_json JSONB NOT NULL,
+                            delivery_json JSONB NOT NULL,
+                            total_amount NUMERIC(10, 2) NOT NULL,
+                            currency TEXT NOT NULL DEFAULT 'EUR',
+                            order_date TIMESTAMPTZ NOT NULL,
+                            created_at TIMESTAMPTZ NOT NULL,
+                            updated_at TIMESTAMPTZ NOT NULL,
+                            raw_data_json JSONB
+                        )
+                    """)
+                    
+                    # Create print_jobs table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS print_jobs (
+                            id SERIAL PRIMARY KEY,
+                            order_id TEXT NOT NULL,
+                            job_type TEXT NOT NULL,
+                            status TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            printer_name TEXT,
+                            attempts INTEGER DEFAULT 0,
+                            max_attempts INTEGER DEFAULT 3,
+                            created_at TIMESTAMPTZ NOT NULL,
+                            updated_at TIMESTAMPTZ NOT NULL,
+                            printed_at TIMESTAMPTZ,
+                            error_message TEXT,
+                            FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
+                        )
+                    """)
+                    
+                    # Create health_metrics table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS health_metrics (
+                            id SERIAL PRIMARY KEY,
+                            timestamp TIMESTAMPTZ NOT NULL,
+                            metric_name TEXT NOT NULL,
+                            value REAL NOT NULL,
+                            tags TEXT,
+                            status TEXT
+                        )
+                    """)
+                    
+                    # Create circuit_breaker_failures table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS circuit_breaker_failures (
+                            id SERIAL PRIMARY KEY,
+                            breaker_name TEXT NOT NULL,
+                            timestamp TIMESTAMPTZ NOT NULL
+                        )
+                    """)
+                    
+                    # Create indexes for better performance
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_wix_id ON orders(wix_order_id);")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_print_jobs_order_id ON print_jobs(order_id);")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs(status);")
                 
-                # Create orders table
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS orders (
-                        id TEXT PRIMARY KEY,
-                        wix_order_id TEXT UNIQUE NOT NULL,
-                        status TEXT NOT NULL,
-                        items_json TEXT NOT NULL,
-                        customer_json TEXT NOT NULL,
-                        delivery_json TEXT NOT NULL,
-                        total_amount REAL NOT NULL,
-                        currency TEXT NOT NULL DEFAULT 'EUR',
-                        order_date TEXT NOT NULL,
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL,
-                        raw_data_json TEXT
-                    )
-                """)
+                logger.info("Database tables checked/created successfully")
                 
-                # Create print_jobs table
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS print_jobs (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        order_id TEXT NOT NULL,
-                        job_type TEXT NOT NULL,
-                        status TEXT NOT NULL,
-                        content TEXT NOT NULL,
-                        printer_name TEXT,
-                        attempts INTEGER DEFAULT 0,
-                        max_attempts INTEGER DEFAULT 3,
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL,
-                        printed_at TEXT,
-                        error_message TEXT,
-                        FOREIGN KEY (order_id) REFERENCES orders (id)
-                    )
-                """)
-                
-                # Create health_metrics table
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS health_metrics (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        timestamp TEXT NOT NULL,
-                        metric_name TEXT NOT NULL,
-                        value REAL NOT NULL,
-                        tags TEXT,
-                        status TEXT
-                    )
-                """)
-                
-                # Create circuit_breaker_failures table
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS circuit_breaker_failures (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        breaker_name TEXT NOT NULL,
-                        timestamp TEXT NOT NULL
-                    )
-                """)
-                
-                # Create indexes for better performance
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_wix_id ON orders(wix_order_id)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_print_jobs_order_id ON print_jobs(order_id)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs(status)")
-                
-                conn.commit()
-                logger.info("Database tables created successfully")
-                
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Error initializing database: {e}")
             raise DatabaseError(f"Database initialization failed: {e}")
-    
-    def get_connection(self) -> sqlite3.Connection:
-        """Get a database connection with row factory."""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
-        return conn
-    
+
     def save_order(self, order: Order) -> bool:
-        """
-        Save an order to the database.
-        
-        Args:
-            order: Order instance to save
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
+        """Saves or updates an order in the database using ON CONFLICT."""
         try:
             with self.get_connection() as conn:
-                order_dict = order.to_dict()
-                
-                # Insert or replace order
-                conn.execute("""
-                    INSERT OR REPLACE INTO orders (
-                        id, wix_order_id, status, items_json, customer_json,
-                        delivery_json, total_amount, currency, order_date,
-                        created_at, updated_at, raw_data_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    order_dict['id'], order_dict['wix_order_id'], order_dict['status'],
-                    order_dict['items_json'], order_dict['customer_json'],
-                    order_dict['delivery_json'], order_dict['total_amount'],
-                    order_dict['currency'], order_dict['order_date'],
-                    order_dict['created_at'], order_dict['updated_at'],
-                    order_dict['raw_data_json']
-                ))
-                
-                conn.commit()
-                logger.info(f"Order {order.id} saved successfully")
-                return True
-                
-        except sqlite3.Error as e:
+                with conn.cursor() as cursor:
+                    order_dict = order.to_dict()
+                    
+                    # Use INSERT ... ON CONFLICT for "upsert" behavior
+                    cursor.execute("""
+                        INSERT INTO orders (
+                            id, wix_order_id, status, items_json, customer_json,
+                            delivery_json, total_amount, currency, order_date,
+                            created_at, updated_at, raw_data_json
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (wix_order_id) DO UPDATE SET
+                            status = EXCLUDED.status,
+                            items_json = EXCLUDED.items_json,
+                            customer_json = EXCLUDED.customer_json,
+                            delivery_json = EXCLUDED.delivery_json,
+                            total_amount = EXCLUDED.total_amount,
+                            currency = EXCLUDED.currency,
+                            order_date = EXCLUDED.order_date,
+                            updated_at = EXCLUDED.updated_at,
+                            raw_data_json = EXCLUDED.raw_data_json;
+                    """, (
+                        order_dict['id'], order_dict['wix_order_id'], order_dict['status'],
+                        json.dumps(order_dict['items_json']), json.dumps(order_dict['customer_json']),
+                        json.dumps(order_dict['delivery_json']), order_dict['total_amount'],
+                        order_dict['currency'], order_dict['order_date'],
+                        order_dict['created_at'], order_dict['updated_at'],
+                        json.dumps(order_dict['raw_data_json'])
+                    ))
+            logger.info(f"Order {order.id} saved successfully")
+            return True
+        except psycopg2.Error as e:
             logger.error(f"Error saving order {order.id}: {e}")
             return False
-    
+
     def get_order(self, order_id: str) -> Optional[Order]:
-        """
-        Retrieve an order by ID.
-        
-        Args:
-            order_id: Order ID to retrieve
-            
-        Returns:
-            Order instance or None if not found
-        """
+        """Retrieve an order by its primary key."""
         try:
             with self.get_connection() as conn:
-                cursor = conn.execute(
-                    "SELECT * FROM orders WHERE id = ?", (order_id,)
-                )
-                row = cursor.fetchone()
-                
-                if row:
-                    return self._row_to_order(row)
-                return None
-                
-        except sqlite3.Error as e:
+                with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+                    cursor.execute("SELECT * FROM orders WHERE id = %s", (order_id,))
+                    row = cursor.fetchone()
+                    return self._row_to_order(row) if row else None
+        except psycopg2.Error as e:
             logger.error(f"Error retrieving order {order_id}: {e}")
             return None
 
     def get_order_by_wix_id(self, wix_order_id: str) -> Optional[Order]:
-        """
-        Retrieve an order by its Wix Order ID.
-
-        Args:
-            wix_order_id: Wix Order ID to retrieve
-
-        Returns:
-            Order instance or None if not found
-        """
+        """Retrieve an order by its Wix Order ID."""
         try:
             with self.get_connection() as conn:
-                cursor = conn.execute(
-                    "SELECT * FROM orders WHERE wix_order_id = ?", (wix_order_id,)
-                )
-                row = cursor.fetchone()
-
-                if row:
-                    return self._row_to_order(row)
-                return None
-
-        except sqlite3.Error as e:
+                with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+                    cursor.execute("SELECT * FROM orders WHERE wix_order_id = %s", (wix_order_id,))
+                    row = cursor.fetchone()
+                    return self._row_to_order(row) if row else None
+        except psycopg2.Error as e:
             logger.error(f"Error retrieving order by Wix ID {wix_order_id}: {e}")
             return None
-    
+
     def get_orders_by_status(self, status: OrderStatus) -> List[Order]:
-        """
-        Retrieve orders by status.
-        
-        Args:
-            status: Order status to filter by
-            
-        Returns:
-            List of Order instances
-        """
+        """Retrieve orders by status."""
         try:
             with self.get_connection() as conn:
-                cursor = conn.execute(
-                    "SELECT * FROM orders WHERE status = ? ORDER BY created_at DESC",
-                    (status.value,)
-                )
-                rows = cursor.fetchall()
-                
-                return [self._row_to_order(row) for row in rows]
-                
-        except sqlite3.Error as e:
+                with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+                    cursor.execute(
+                        "SELECT * FROM orders WHERE status = %s ORDER BY created_at DESC",
+                        (status.value,)
+                    )
+                    rows = cursor.fetchall()
+                    return [self._row_to_order(row) for row in rows]
+        except psycopg2.Error as e:
             logger.error(f"Error retrieving orders by status {status}: {e}")
             return []
-    
-    def save_print_job(self, print_job: PrintJob) -> Optional[str]:
-        """
-        Save a print job to the database.
-        
-        Args:
-            print_job: PrintJob instance to save
-            
-        Returns:
-            Print job ID if successful, None otherwise
-        """
+
+    def save_print_job(self, print_job: PrintJob) -> Optional[int]:
+        """Save a print job to the database and return its ID."""
         try:
             with self.get_connection() as conn:
-                job_dict = print_job.to_dict()
-                
-                if print_job.id:
-                    # Update existing job
-                    conn.execute("""
-                        UPDATE print_jobs SET
-                            order_id = ?, job_type = ?, status = ?, content = ?,
-                            printer_name = ?, attempts = ?, max_attempts = ?,
-                            updated_at = ?, printed_at = ?, error_message = ?
-                        WHERE id = ?
-                    """, (
-                        job_dict['order_id'], job_dict['job_type'], job_dict['status'],
-                        job_dict['content'], job_dict['printer_name'], job_dict['attempts'],
-                        job_dict['max_attempts'], job_dict['updated_at'],
-                        job_dict['printed_at'], job_dict['error_message'], print_job.id
-                    ))
-                    job_id = print_job.id
-                else:
-                    # Insert new job
-                    cursor = conn.execute("""
-                        INSERT INTO print_jobs (
-                            order_id, job_type, status, content, printer_name,
-                            attempts, max_attempts, created_at, updated_at,
-                            printed_at, error_message
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        job_dict['order_id'], job_dict['job_type'], job_dict['status'],
-                        job_dict['content'], job_dict['printer_name'], job_dict['attempts'],
-                        job_dict['max_attempts'], job_dict['created_at'],
-                        job_dict['updated_at'], job_dict['printed_at'], job_dict['error_message']
-                    ))
-                    job_id = str(cursor.lastrowid)
-                
-                conn.commit()
-                logger.info(f"Print job {job_id} saved successfully")
-                return job_id
-                
-        except sqlite3.Error as e:
+                with conn.cursor() as cursor:
+                    job_dict = print_job.to_dict()
+                    
+                    if print_job.id:
+                        # Update existing job
+                        cursor.execute("""
+                            UPDATE print_jobs SET
+                                order_id = %s, job_type = %s, status = %s, content = %s,
+                                printer_name = %s, attempts = %s, max_attempts = %s,
+                                updated_at = %s, printed_at = %s, error_message = %s
+                            WHERE id = %s
+                        """, (
+                            job_dict['order_id'], job_dict['job_type'], job_dict['status'],
+                            job_dict['content'], job_dict['printer_name'], job_dict['attempts'],
+                            job_dict['max_attempts'], job_dict['updated_at'],
+                            job_dict['printed_at'], job_dict['error_message'], print_job.id
+                        ))
+                        job_id = print_job.id
+                    else:
+                        # Insert new job and return the new ID
+                        cursor.execute("""
+                            INSERT INTO print_jobs (
+                                order_id, job_type, status, content, printer_name,
+                                attempts, max_attempts, created_at, updated_at,
+                                printed_at, error_message
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            RETURNING id;
+                        """, (
+                            job_dict['order_id'], job_dict['job_type'], job_dict['status'],
+                            job_dict['content'], job_dict['printer_name'], job_dict['attempts'],
+                            job_dict['max_attempts'], job_dict['created_at'],
+                            job_dict['updated_at'], job_dict['printed_at'], job_dict['error_message']
+                        ))
+                        job_id = cursor.fetchone()[0]
+                    
+                    logger.info(f"Print job {job_id} saved successfully")
+                    return job_id
+        except psycopg2.Error as e:
             logger.error(f"Error saving print job: {e}")
             return None
-    
+
     def get_pending_print_jobs(self) -> List[PrintJob]:
-        """
-        Retrieve all pending print jobs.
-        
-        Returns:
-            List of PrintJob instances with pending status
-        """
+        """Retrieve all pending print jobs."""
         try:
             with self.get_connection() as conn:
-                cursor = conn.execute("""
-                    SELECT * FROM print_jobs 
-                    WHERE status = ? AND attempts < max_attempts
-                    ORDER BY created_at ASC
-                """, (PrintJobStatus.PENDING.value,))
-                rows = cursor.fetchall()
-                
-                return [self._row_to_print_job(row) for row in rows]
-                
-        except sqlite3.Error as e:
+                with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+                    cursor.execute("""
+                        SELECT * FROM print_jobs 
+                        WHERE status = %s AND attempts < max_attempts
+                        ORDER BY created_at ASC
+                    """, (PrintJobStatus.PENDING.value,))
+                    rows = cursor.fetchall()
+                    return [self._row_to_print_job(row) for row in rows]
+        except psycopg2.Error as e:
             logger.error(f"Error retrieving pending print jobs: {e}")
             return []
-    
-    def _row_to_order(self, row: sqlite3.Row) -> Order:
-        """Convert database row to Order instance."""
-        # Parse JSON fields
-        items_data = json.loads(row['items_json'])
-        customer_data = json.loads(row['customer_json'])
-        delivery_data = json.loads(row['delivery_json'])
-        raw_data = json.loads(row['raw_data_json']) if row['raw_data_json'] else None
-        
-        # Reconstruct items
-        items = [OrderItem(**item_data) for item_data in items_data]
-        
-        # Reconstruct customer and delivery info
-        customer = CustomerInfo(**customer_data)
-        delivery = DeliveryInfo(**delivery_data)
-        
+
+    def _row_to_order(self, row: psycopg2.extras.DictRow) -> Order:
+        """Convert database row (DictRow) to Order instance."""
         return Order(
             id=row['id'],
             wix_order_id=row['wix_order_id'],
             status=OrderStatus(row['status']),
-            items=items,
-            customer=customer,
-            delivery=delivery,
+            items=[OrderItem(**item_data) for item_data in row['items_json']],
+            customer=CustomerInfo(**row['customer_json']),
+            delivery=DeliveryInfo(**row['delivery_json']),
             total_amount=row['total_amount'],
             currency=row['currency'],
-            order_date=datetime.fromisoformat(row['order_date']),
-            created_at=datetime.fromisoformat(row['created_at']),
-            updated_at=datetime.fromisoformat(row['updated_at']),
-            raw_data=raw_data
+            order_date=row['order_date'],
+            created_at=row['created_at'],
+            updated_at=row['updated_at'],
+            raw_data=row['raw_data_json']
         )
-    
-    def _row_to_print_job(self, row: sqlite3.Row) -> PrintJob:
-        """Convert database row to PrintJob instance."""
+
+    def _row_to_print_job(self, row: psycopg2.extras.DictRow) -> PrintJob:
+        """Convert database row (DictRow) to PrintJob instance."""
         return PrintJob(
-            id=str(row['id']),
+            id=row['id'],
             order_id=row['order_id'],
             job_type=row['job_type'],
             status=PrintJobStatus(row['status']),
@@ -349,19 +296,8 @@ class Database:
             printer_name=row['printer_name'],
             attempts=row['attempts'],
             max_attempts=row['max_attempts'],
-            created_at=datetime.fromisoformat(row['created_at']),
-            updated_at=datetime.fromisoformat(row['updated_at']),
-            printed_at=datetime.fromisoformat(row['printed_at']) if row['printed_at'] else None,
+            created_at=row['created_at'],
+            updated_at=row['updated_at'],
+            printed_at=row['printed_at'],
             error_message=row['error_message']
         )
-    
-    def close(self):
-        """Close database connection."""
-        if self.connection:
-            try:
-                self.connection.close()
-                logger.info("Database connection closed")
-            except Exception as e:
-                logger.warning(f"Error closing database connection: {e}")
-            finally:
-                self.connection = None

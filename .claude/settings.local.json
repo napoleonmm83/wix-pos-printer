@@ -6,7 +6,13 @@
       "Bash(bash:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "mcp__context7__resolve-library-id"
+      "mcp__context7__resolve-library-id",
+      "mcp__archon__manage_task",
+      "mcp__archon__find_projects",
+      "mcp__archon__find_tasks",
+      "mcp__archon__manage_document",
+      "Bash(python:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

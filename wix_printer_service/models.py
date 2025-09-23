@@ -151,7 +151,7 @@ class Order:
             mapped_status = OrderStatus.CANCELLED
         elif raw_status in ('FULFILLED', 'COMPLETED'):  # treat fulfilled/completed as completed
             mapped_status = OrderStatus.COMPLETED
-        elif raw_status in ('PROCESSING', 'APPROVED', 'PAID', 'PARTIALLY_FULFILLED', 'PARTIALLY_PAID'):
+        elif raw_status in ('PROCESSING', 'APPROVED', 'PAID', 'PARTIALLY_PAID'):
             mapped_status = OrderStatus.PROCESSING
         else:
             mapped_status = OrderStatus.PENDING
