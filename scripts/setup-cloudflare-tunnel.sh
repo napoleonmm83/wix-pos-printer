@@ -15,6 +15,11 @@ fetch_permission_groups() {
         -H "X-Auth-Key: $CF_GLOBAL_KEY" \
         -H "Content-Type: application/json")
 
+    if [[ -z "$CF_PERMISSION_GROUPS_JSON" ]]; then
+        error "Cloudflare permission group call returned empty response"
+        return 1
+    fi
+
     if ! echo "$CF_PERMISSION_GROUPS_JSON" | grep -q '"success":true'; then
         error "Unable to fetch Cloudflare permission groups."
         echo "$CF_PERMISSION_GROUPS_JSON"
@@ -51,6 +56,7 @@ PY
 
     if [[ -z "$id" ]]; then
         error "Permission group '$name' not found or could not be parsed."
+        echo "$CF_PERMISSION_GROUPS_JSON"
         return 1
     fi
 
