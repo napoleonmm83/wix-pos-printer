@@ -1,5 +1,6 @@
 # Cache permission groups to avoid multiple API calls
 CF_PERMISSION_GROUPS_JSON=""
+CF_PERMISSION_GROUPS_FILE=""
 
 fetch_permission_groups() {
     if [[ -n "$CF_PERMISSION_GROUPS_JSON" ]]; then
@@ -33,6 +34,13 @@ fetch_permission_groups() {
     fi
 
     log "DEBUG: Permission groups fetched successfully"
+
+    if [[ -z "$CF_PERMISSION_GROUPS_FILE" ]]; then
+        CF_PERMISSION_GROUPS_FILE=$(mktemp)
+        trap '[[ -n "$CF_PERMISSION_GROUPS_FILE" && -f "$CF_PERMISSION_GROUPS_FILE" ]] && rm -f "$CF_PERMISSION_GROUPS_FILE"' EXIT
+    fi
+
+    printf '%s' "$CF_PERMISSION_GROUPS_JSON" > "$CF_PERMISSION_GROUPS_FILE"
     return 0
 }
 
@@ -43,16 +51,22 @@ get_permission_group_id() {
     fetch_permission_groups || return 1
 
     local id
-    id=$(CF_PERMISSION_GROUPS_JSON="$CF_PERMISSION_GROUPS_JSON" python3 - "$name" <<'PY'
-import json, os, sys
+    id=$(python3 - "$name" "$CF_PERMISSION_GROUPS_FILE" <<'PY'
+import json
+import sys
+
+if len(sys.argv) < 3:
+    sys.exit(1)
+
 name = sys.argv[1]
-raw = os.environ.get("CF_PERMISSION_GROUPS_JSON", "")
-if not raw:
-    sys.exit(1)
+file_path = sys.argv[2]
+
 try:
-    data = json.loads(raw)
-except json.JSONDecodeError:
+    with open(file_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+except Exception:
     sys.exit(1)
+
 for item in data.get("result", []):
     if item.get("name") == name:
         print(item.get("id", ""))
