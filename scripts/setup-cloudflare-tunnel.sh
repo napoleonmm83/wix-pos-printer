@@ -1,3 +1,56 @@
+# Cache permission groups to avoid multiple API calls
+CF_PERMISSION_GROUPS_JSON=""
+
+fetch_permission_groups() {
+    if [[ -n "$CF_PERMISSION_GROUPS_JSON" ]]; then
+        return 0
+    fi
+
+    if [[ -z "$CF_EMAIL" || -z "$CF_GLOBAL_KEY" ]]; then
+        return 1
+    fi
+
+    CF_PERMISSION_GROUPS_JSON=$(curl -s -X GET "https://api.cloudflare.com/client/v4/user/tokens/permission_groups" \
+        -H "X-Auth-Email: $CF_EMAIL" \
+        -H "X-Auth-Key: $CF_GLOBAL_KEY" \
+        -H "Content-Type: application/json")
+
+    if ! echo "$CF_PERMISSION_GROUPS_JSON" | grep -q '"success":true'; then
+        error "Unable to fetch Cloudflare permission groups."
+        echo "$CF_PERMISSION_GROUPS_JSON"
+        CF_PERMISSION_GROUPS_JSON=""
+        return 1
+    fi
+
+    return 0
+}
+
+get_permission_group_id() {
+    local name="$1"
+    [[ -z "$name" ]] && return 1
+
+    fetch_permission_groups || return 1
+
+    local id
+    id=$(echo "$CF_PERMISSION_GROUPS_JSON" | python3 - "$name" <<'PY'
+import json, sys
+name = sys.argv[1]
+data = json.load(sys.stdin)
+for item in data.get("result", []):
+    if item.get("name") == name:
+        print(item.get("id", ""))
+        break
+PY
+)
+
+    if [[ -z "$id" ]]; then
+        error "Permission group '$name' not found in your account."
+        return 1
+    fi
+
+    echo "$id"
+    return 0
+}
 #!/bin/bash
 
 # 🌐 Cloudflare Tunnel Setup Script
@@ -197,7 +250,12 @@ create_api_token_automatically() {
     fi
     
     log "🔧 Creating dedicated API token for tunnel management..."
-    
+
+    local zone_read_id zone_dns_edit_id tunnel_edit_id
+    zone_read_id=$(get_permission_group_id "Zone:Zone:Read") || return 1
+    zone_dns_edit_id=$(get_permission_group_id "Zone:DNS:Edit") || return 1
+    tunnel_edit_id=$(get_permission_group_id "Cloudflare Tunnel:Edit") || return 1
+
     # Create API token with minimal required permissions
     API_TOKEN_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/user/tokens" \
         -H "X-Auth-Email: $CF_EMAIL" \
@@ -213,11 +271,11 @@ create_api_token_automatically() {
                     },
                     "permission_groups": [
                         {
-                            "id": "c8fed203ed3043cba015a93ad1616f1f",
+                            "id": "'"$zone_read_id"'",
                             "name": "Zone:Zone:Read"
                         },
                         {
-                            "id": "4755a26eedb94da69e1066d98aa820be",
+                            "id": "'"$zone_dns_edit_id"'",
                             "name": "Zone:DNS:Edit"
                         }
                     ]
@@ -229,7 +287,7 @@ create_api_token_automatically() {
                     },
                     "permission_groups": [
                         {
-                            "id": "79c6f70e22f04f9494c5da4c2292f804",
+                            "id": "'"$tunnel_edit_id"'",
                             "name": "Cloudflare Tunnel:Edit"
                         }
                     ]
