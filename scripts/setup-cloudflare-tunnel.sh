@@ -201,6 +201,7 @@ if [[ -z "$SUBDOMAIN" ]]; then
 fi
 
 FULL_DOMAIN="$SUBDOMAIN.$DOMAIN"
+TUNNEL_NAME="wix-pos-printer-tunnel"
 
 echo ""
 log "Configuration:"
