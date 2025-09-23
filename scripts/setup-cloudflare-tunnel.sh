@@ -32,10 +32,16 @@ get_permission_group_id() {
     fetch_permission_groups || return 1
 
     local id
-    id=$(echo "$CF_PERMISSION_GROUPS_JSON" | python3 - "$name" <<'PY'
-import json, sys
+    id=$(CF_PERMISSION_GROUPS_JSON="$CF_PERMISSION_GROUPS_JSON" python3 - "$name" <<'PY'
+import json, os, sys
 name = sys.argv[1]
-data = json.load(sys.stdin)
+raw = os.environ.get("CF_PERMISSION_GROUPS_JSON", "")
+if not raw:
+    sys.exit(1)
+try:
+    data = json.loads(raw)
+except json.JSONDecodeError:
+    sys.exit(1)
 for item in data.get("result", []):
     if item.get("name") == name:
         print(item.get("id", ""))
@@ -44,7 +50,7 @@ PY
 )
 
     if [[ -z "$id" ]]; then
-        error "Permission group '$name' not found in your account."
+        error "Permission group '$name' not found or could not be parsed."
         return 1
     fi
 
