@@ -659,6 +659,9 @@ create_dns_via_api() {
         if echo "$DNS_RESPONSE" | grep -q '"success":true'; then
             log "✅ DNS record created via API: $FULL_DOMAIN"
             return 0
+        elif echo "$DNS_RESPONSE" | grep -q '"code":81053'; then
+            log "ℹ️  DNS record already exists for $FULL_DOMAIN"
+            return 0
         else
             warn "API DNS creation failed, falling back to cloudflared"
             echo "Response: $DNS_RESPONSE"
