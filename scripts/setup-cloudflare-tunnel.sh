@@ -544,8 +544,25 @@ done
 echo ""
 log "🚇 Creating Cloudflare Tunnel..."
 
-TUNNEL_NAME="wix-printer-$(date +%s)"
+# Use consistent tunnel name (defined earlier in script)
 log "Tunnel name: $TUNNEL_NAME"
+
+# Check if tunnel already exists
+log "🔍 Checking for existing tunnel..."
+EXISTING_TUNNEL_ID=$(cloudflared tunnel list 2>/dev/null | grep "$TUNNEL_NAME" | awk '{print $1}' | head -1)
+
+if [[ -n "$EXISTING_TUNNEL_ID" ]]; then
+    log "✅ Found existing tunnel: $TUNNEL_NAME (ID: $EXISTING_TUNNEL_ID)"
+    TUNNEL_ID="$EXISTING_TUNNEL_ID"
+
+    # Check if credentials file exists
+    TUNNEL_CREDS="$HOME/.cloudflared/$TUNNEL_ID.json"
+    if [[ ! -f "$TUNNEL_CREDS" ]]; then
+        warn "Tunnel exists but credentials file missing. You may need to re-authenticate."
+        warn "Try: cloudflared tunnel login"
+    fi
+else
+    log "🔧 No existing tunnel found, creating new one..."
 
 # Function to create tunnel via API (more reliable)
 create_tunnel_via_api() {
@@ -621,6 +638,7 @@ if ! create_tunnel_via_api; then
         error "Failed to create tunnel"
         exit 1
     fi
+fi
 fi
 
 # Create DNS record

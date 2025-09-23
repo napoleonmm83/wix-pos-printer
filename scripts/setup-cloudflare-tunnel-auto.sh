@@ -35,6 +35,7 @@ CF_EMAIL=""
 CF_GLOBAL_KEY=""
 DOMAIN=""
 SUBDOMAIN="printer"
+TUNNEL_NAME="wix-pos-printer-tunnel"
 
 show_usage() {
     echo ""
@@ -266,8 +267,42 @@ log "Zone ID: $ZONE_ID"
 # Step 4: Create tunnel
 log "🚇 Step 4: Creating Cloudflare Tunnel..."
 
-TUNNEL_NAME="wix-printer-$(date +%s)"
-TUNNEL_SECRET=$(openssl rand -base64 32)
+# Check if tunnel already exists
+log "🔍 Checking for existing tunnel: $TUNNEL_NAME"
+EXISTING_TUNNELS_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
+    -H "Authorization: Bearer $CF_API_TOKEN" \
+    -H "Content-Type: application/json")
+
+EXISTING_TUNNEL_ID=$(echo "$EXISTING_TUNNELS_RESPONSE" | python3 - <<'PY'
+import json
+import sys
+import os
+
+try:
+    data = json.load(sys.stdin)
+    tunnel_name = os.environ.get('TUNNEL_NAME', '')
+
+    if data.get('success') and tunnel_name:
+        for tunnel in data.get('result', []):
+            if tunnel.get('name') == tunnel_name:
+                print(tunnel.get('id', ''))
+                sys.exit(0)
+except Exception:
+    pass
+PY
+)
+
+if [[ -n "$EXISTING_TUNNEL_ID" ]]; then
+    log "✅ Found existing tunnel: $TUNNEL_NAME (ID: $EXISTING_TUNNEL_ID)"
+    TUNNEL_ID="$EXISTING_TUNNEL_ID"
+
+    # Get tunnel credentials
+    TUNNEL_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID" \
+        -H "Authorization: Bearer $CF_API_TOKEN" \
+        -H "Content-Type: application/json")
+else
+    log "🔧 No existing tunnel found, creating new one..."
+    TUNNEL_SECRET=$(openssl rand -base64 32)
 
 TUNNEL_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
     -H "Authorization: Bearer $CF_API_TOKEN" \
@@ -298,6 +333,7 @@ else
     error "Failed to create tunnel"
     echo "Response: $TUNNEL_RESPONSE"
     exit 1
+fi
 fi
 
 # Step 5: Create DNS record
