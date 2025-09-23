@@ -4,7 +4,7 @@
 # Wix Printer Service - Robust Version with Error Handling
 # Version: 1.2
 
-# ... (error handling and other functions remain the same) ...
+source "$(dirname "$0")/helpers.sh"
 
 # Create tunnel configuration
 log "⚙️ Creating tunnel configuration..."
