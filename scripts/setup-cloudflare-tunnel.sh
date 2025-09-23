@@ -335,7 +335,7 @@ EOF
         fi
     else
         error "Failed to create API token"
-        echo "Response: $API_TOKEN_RESPONSE"
+        echo "$API_TOKEN_RESPONSE"
         return 1
     fi
 }
