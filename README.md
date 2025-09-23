@@ -261,6 +261,7 @@ pytest tests/test_integration.py -v
 - **Test commit for auto-updater.**
 - **Second test commit for debug logging.**
 - **Final test of the auto-updater.**
+- **Final validation of the auto-updater.**
 
 ---
 
