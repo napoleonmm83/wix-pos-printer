@@ -314,21 +314,28 @@ configure_printer_env() {
         echo ""
         echo "  Updating .env file..."
 
-        # Remove old entries
-        grep -v "^PRINTER_USB_VENDOR_ID=" $ENV_FILE | grep -v "^PRINTER_USB_PRODUCT_ID=" | grep -v "^PRINTER_INTERFACE=" > ${ENV_FILE}.tmp
+        # Use the same method as other scripts for safe .env editing
+        sudo touch $ENV_FILE
+        sudo chown wix-printer:wix-printer $ENV_FILE 2>/dev/null || sudo chown $(whoami):$(whoami) $ENV_FILE
 
-        # Add new entries
-        cat << EOF >> ${ENV_FILE}.tmp
+        # Update each value using sed (like other scripts do)
+        if grep -q "^PRINTER_USB_VENDOR_ID=" $ENV_FILE; then
+            sudo sed -i "s|^PRINTER_USB_VENDOR_ID=.*|PRINTER_USB_VENDOR_ID=${PRINTER_VENDOR}|" $ENV_FILE
+        else
+            echo "PRINTER_USB_VENDOR_ID=${PRINTER_VENDOR}" | sudo tee -a $ENV_FILE > /dev/null
+        fi
 
-# Printer Configuration
-PRINTER_USB_VENDOR_ID=${PRINTER_VENDOR}
-PRINTER_USB_PRODUCT_ID=${PRINTER_PRODUCT}
-PRINTER_INTERFACE=usb
-PRINTER_CHARSET=CP858
-PRINTER_WIDTH=48
-EOF
+        if grep -q "^PRINTER_USB_PRODUCT_ID=" $ENV_FILE; then
+            sudo sed -i "s|^PRINTER_USB_PRODUCT_ID=.*|PRINTER_USB_PRODUCT_ID=${PRINTER_PRODUCT}|" $ENV_FILE
+        else
+            echo "PRINTER_USB_PRODUCT_ID=${PRINTER_PRODUCT}" | sudo tee -a $ENV_FILE > /dev/null
+        fi
 
-        mv ${ENV_FILE}.tmp $ENV_FILE
+        if grep -q "^PRINTER_INTERFACE=" $ENV_FILE; then
+            sudo sed -i "s|^PRINTER_INTERFACE=.*|PRINTER_INTERFACE=usb|" $ENV_FILE
+        else
+            echo "PRINTER_INTERFACE=usb" | sudo tee -a $ENV_FILE > /dev/null
+        fi
         echo -e "${GREEN}✅ Printer configuration updated${NC}"
     fi
 }
@@ -468,21 +475,33 @@ auto_configure_printer() {
 
     echo "  Updating .env with auto-detected values..."
 
-    # Remove old entries
-    grep -v "^PRINTER_USB_VENDOR_ID=" $ENV_FILE | grep -v "^PRINTER_USB_PRODUCT_ID=" | grep -v "^PRINTER_INTERFACE=" > ${ENV_FILE}.tmp
+    # Use the same safe method as other scripts
+    sudo touch $ENV_FILE
+    sudo chown wix-printer:wix-printer $ENV_FILE 2>/dev/null || sudo chown $(whoami):$(whoami) $ENV_FILE
 
-    # Add new entries with detected values
-    cat << EOF >> ${ENV_FILE}.tmp
+    # Update each value safely using sed
+    if grep -q "^PRINTER_USB_VENDOR_ID=" $ENV_FILE; then
+        sudo sed -i "s|^PRINTER_USB_VENDOR_ID=.*|PRINTER_USB_VENDOR_ID=$DETECTED_VENDOR|" $ENV_FILE
+    else
+        echo "PRINTER_USB_VENDOR_ID=$DETECTED_VENDOR" | sudo tee -a $ENV_FILE > /dev/null
+    fi
 
-# Printer Configuration (Auto-detected: $DETECTED_NAME)
-PRINTER_USB_VENDOR_ID=$DETECTED_VENDOR
-PRINTER_USB_PRODUCT_ID=$DETECTED_PRODUCT
-PRINTER_INTERFACE=usb
-PRINTER_CHARSET=CP858
-PRINTER_WIDTH=48
-EOF
+    if grep -q "^PRINTER_USB_PRODUCT_ID=" $ENV_FILE; then
+        sudo sed -i "s|^PRINTER_USB_PRODUCT_ID=.*|PRINTER_USB_PRODUCT_ID=$DETECTED_PRODUCT|" $ENV_FILE
+    else
+        echo "PRINTER_USB_PRODUCT_ID=$DETECTED_PRODUCT" | sudo tee -a $ENV_FILE > /dev/null
+    fi
 
-    mv ${ENV_FILE}.tmp $ENV_FILE
+    if grep -q "^PRINTER_INTERFACE=" $ENV_FILE; then
+        sudo sed -i "s|^PRINTER_INTERFACE=.*|PRINTER_INTERFACE=usb|" $ENV_FILE
+    else
+        echo "PRINTER_INTERFACE=usb" | sudo tee -a $ENV_FILE > /dev/null
+    fi
+
+    # Add comment if not present
+    if ! grep -q "Auto-detected:" $ENV_FILE; then
+        echo "# Printer Configuration (Auto-detected: $DETECTED_NAME)" | sudo tee -a $ENV_FILE > /dev/null
+    fi
     echo -e "${GREEN}✅ Printer auto-configured: $DETECTED_VENDOR:$DETECTED_PRODUCT${NC}"
 }
 
