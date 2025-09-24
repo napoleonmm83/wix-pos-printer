@@ -87,11 +87,9 @@ class OrderService:
             if not order_data:
                 raise OrderValidationError("No order data found in webhook")
             
-            # Create Order instance from Wix data
-            order = Order.from_wix_data(order_data)
-            
             # Validate order data
             self._validate_order(order)
+            logger.info("Order validation complete, proceeding to database operations.")
             
             # Save order to database
             if self.database.save_order(order):

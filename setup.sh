@@ -20,10 +20,11 @@ echo "📋 SETUP OPTIONS:"
 echo "1️⃣ Complete Setup (Raspberry Pi + Public URL)"
 echo "2️⃣ Public URL Setup Only"
 echo "3️⃣ Raspberry Pi Setup Only"
+echo "4️⃣ Update Configuration (Auto-Check Settings)"
 echo ""
 
 while true; do
-    read -p "👉 Choose setup option (1-3): " setup_choice
+    read -p "👉 Choose setup option (1-4): " setup_choice
     case $setup_choice in
         1)
             echo "🚀 Starting complete setup..."
@@ -41,8 +42,13 @@ while true; do
             # Run quickstart but skip public URL setup
             SKIP_PUBLIC_URL=1 exec ./scripts/raspberry-pi-quickstart.sh
             ;;
+        4)
+            echo "⚙️ Starting configuration update..."
+            echo ""
+            exec ./scripts/update-config.sh
+            ;;
         *)
-            echo "❌ Please enter 1, 2, or 3"
+            echo "❌ Please enter 1, 2, 3, or 4"
             ;;
     esac
 done

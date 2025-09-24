@@ -221,6 +221,13 @@ get_or_prompt_var "PRINTER_INTERFACE" "Printer connection type (usb/network)" "u
 get_or_prompt_var "PRINTER_IP" "Printer IP address (if network)" "192.168.1.100"
 get_or_prompt_var "SERVICE_PORT" "Service port for the main application" "8000"
 get_or_prompt_var "LOG_LEVEL" "Log level (DEBUG, INFO, WARNING, ERROR)" "INFO"
+
+# --- Auto-Check Configuration ---
+log "🔄 Configuring Auto-Check Service..."
+get_or_prompt_var "AUTO_CHECK_ENABLED" "Enable auto-check for new orders? (true/false)" "true"
+get_or_prompt_var "AUTO_CHECK_INTERVAL" "Auto-check interval in seconds" "30"
+get_or_prompt_var "AUTO_CHECK_HOURS_BACK" "Hours to look back for orders (recommended: 48 for change detection)" "48"
+
 get_or_prompt_var "NOTIFICATION_ENABLED" "Enable email notifications? (true/false)" "false"
 
 if [ "$NOTIFICATION_ENABLED" = "true" ]; then

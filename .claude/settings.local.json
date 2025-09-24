@@ -21,7 +21,12 @@
       "Bash(export WIX_SITE_ID=\"2cb0793c-4d21-4c06-89b2-d8bf3728aa21\")",
       "Read(//opt/**)",
       "mcp__archon__rag_search_knowledge_base",
-      "mcp__archon__rag_get_available_sources"
+      "mcp__archon__rag_get_available_sources",
+      "Bash(railway login:*)",
+      "Bash(railway status:*)",
+      "Bash(railway variables:*)",
+      "Bash(chmod:*)",
+      "Bash(./scripts/update-config.sh:*)"
     ],
     "deny": [],
     "ask": []

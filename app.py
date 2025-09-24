@@ -80,7 +80,9 @@ def init_auto_check_db():
                         wix_order_id TEXT UNIQUE NOT NULL,
                         checked_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                         processed_for_print BOOLEAN DEFAULT FALSE,
-                        print_status TEXT DEFAULT 'pending'
+                        print_status TEXT DEFAULT 'pending',
+                        last_updated_date TEXT,
+                        reprint_count INTEGER DEFAULT 0
                     )
                 ''')
         logging.info("Auto-check database table initialized successfully")
@@ -99,19 +101,54 @@ def is_order_already_processed(order_id: str) -> bool:
         logging.error(f"Error checking if order {order_id} was processed: {e}")
         return False
 
-def mark_order_as_processed(order_id: str, print_status: str = "sent"):
+def has_order_been_updated(order_id: str, current_updated_date: str) -> bool:
+    """Check if an order has been updated since last processing."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT last_updated_date FROM auto_checked_orders WHERE wix_order_id = %s", (order_id,))
+                result = cursor.fetchone()
+
+        if result is None:
+            return False  # Order not in database yet
+
+        last_known_update = result[0]
+        if not last_known_update:
+            return True  # No update date stored, consider it updated
+
+        # Compare update dates
+        return current_updated_date != last_known_update
+    except psycopg2.Error as e:
+        logging.error(f"Error checking if order {order_id} was updated: {e}")
+        return False
+
+def increment_reprint_count(order_id: str):
+    """Increment the reprint count for an order."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                    UPDATE auto_checked_orders
+                    SET reprint_count = reprint_count + 1
+                    WHERE wix_order_id = %s
+                ''', (order_id,))
+    except psycopg2.Error as e:
+        logging.error(f"Error incrementing reprint count for order {order_id}: {e}")
+
+def mark_order_as_processed(order_id: str, print_status: str = "sent", updated_date: str = None):
     """Mark an order as processed in the auto-check database using ON CONFLICT."""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
-                    INSERT INTO auto_checked_orders (wix_order_id, checked_at, processed_for_print, print_status)
-                    VALUES (%s, %s, TRUE, %s)
+                    INSERT INTO auto_checked_orders (wix_order_id, checked_at, processed_for_print, print_status, last_updated_date)
+                    VALUES (%s, %s, TRUE, %s, %s)
                     ON CONFLICT (wix_order_id) DO UPDATE SET
                         checked_at = EXCLUDED.checked_at,
                         processed_for_print = EXCLUDED.processed_for_print,
-                        print_status = EXCLUDED.print_status;
-                ''', (order_id, datetime.utcnow(), print_status))
+                        print_status = EXCLUDED.print_status,
+                        last_updated_date = EXCLUDED.last_updated_date;
+                ''', (order_id, datetime.utcnow(), print_status, updated_date))
         logging.info(f"Marked order {order_id} as processed with status: {print_status}")
     except psycopg2.Error as e:
         logging.error(f"Error marking order {order_id} as processed: {e}")
@@ -139,7 +176,7 @@ async def fetch_wix_orders(from_date: Optional[str] = None, to_date: Optional[st
     if not WIX_API_KEY or not WIX_SITE_ID:
         raise HTTPException(status_code=500,detail="Wix API credentials not configured")
     headers = {
-        "Authorization": f"Bearer {WIX_API_KEY}",
+        "Authorization": WIX_API_KEY,
         "Content-Type": "application/json",
         "wix-site-id": WIX_SITE_ID
     }
@@ -173,27 +210,68 @@ async def auto_check_new_orders():
     if auto_check_running:
         return
     auto_check_running = True
-    logging.info(f"Starting auto-check task (interval: {AUTO_CHECK_INTERVAL}s, look back: {AUTO_CHECK_HOURS_BACK}h)")
+    logging.info(f"Starting enhanced auto-check task (interval: {AUTO_CHECK_INTERVAL}s, look back: {AUTO_CHECK_HOURS_BACK}h)")
+    logging.info("Auto-check now detects: NEW orders + UPDATED orders (qty changes, new items, address changes)")
+
     while auto_check_running:
         try:
             now = datetime.utcnow()
             from_date = (now - timedelta(hours=AUTO_CHECK_HOURS_BACK)).isoformat() + "Z"
             orders = await fetch_wix_orders(from_date=from_date, limit=100)
+
+            new_orders = 0
+            updated_orders = 0
+
             for order in orders:
                 order_id = order.get('id')
-                if order_id and not is_order_already_processed(order_id):
-                    logging.info(f"Auto-check: Found new order {order_id}")
-                    print_payload = {"data": {"orderId": order_id}, "metadata": {"source": "auto_check"}}
+                updated_date = order.get('updatedDate', '')
+
+                if not order_id:
+                    continue
+
+                is_processed = is_order_already_processed(order_id)
+                is_updated = has_order_been_updated(order_id, updated_date)
+
+                should_process = False
+                reason = ""
+
+                if not is_processed:
+                    # New order
+                    should_process = True
+                    reason = "new order"
+                    new_orders += 1
+                elif is_updated:
+                    # Existing order that has been updated
+                    should_process = True
+                    reason = "order updated"
+                    updated_orders += 1
+                    increment_reprint_count(order_id)
+
+                if should_process:
+                    logging.info(f"Auto-check: Processing {order_id} ({reason})")
+                    print_payload = {
+                        "data": {"orderId": order_id},
+                        "metadata": {
+                            "source": "auto_check",
+                            "reason": reason,
+                            "updated_date": updated_date
+                        }
+                    }
+
                     try:
                         async with httpx.AsyncClient(timeout=10.0) as client:
                             response = await client.post(f"{PRINTER_SERVICE_URL}/webhook/orders", json=print_payload)
                             if response.status_code == 202:
-                                mark_order_as_processed(order_id, "sent")
+                                mark_order_as_processed(order_id, "sent", updated_date)
                             else:
-                                mark_order_as_processed(order_id, "failed")
+                                mark_order_as_processed(order_id, "failed", updated_date)
                     except Exception as e:
-                        mark_order_as_processed(order_id, "error")
+                        mark_order_as_processed(order_id, "error", updated_date)
                         logging.error(f"Auto-check: Error processing order {order_id}: {e}")
+
+            if new_orders > 0 or updated_orders > 0:
+                logging.info(f"Auto-check cycle complete: {new_orders} new orders, {updated_orders} updated orders")
+
         except Exception as e:
             logging.error(f"Auto-check: Error during order checking cycle: {e}")
         await asyncio.sleep(AUTO_CHECK_INTERVAL)
