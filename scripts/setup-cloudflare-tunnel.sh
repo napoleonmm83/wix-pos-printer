@@ -53,14 +53,14 @@ show_menu() {
     echo ""
     header "VERFÜGBARE OPTIONEN:"
     echo ""
-    echo "  ${BOLD}1)${NC} 🚀 Neues Tunnel Setup (Erstinstallation)"
-    echo "  ${BOLD}2)${NC} 🔄 Tunnel Update/Konfiguration erneuern"
-    echo "  ${BOLD}3)${NC} 🧹 Tunnel komplett reset/bereinigen"
-    echo "  ${BOLD}4)${NC} 📊 Tunnel Status anzeigen"
-    echo "  ${BOLD}5)${NC} 🧪 Tunnel testen"
-    echo "  ${BOLD}6)${NC} 📜 Logs anzeigen"
-    echo "  ${BOLD}7)${NC} 🗑️ DNS-Records bereinigen (API-Token)"
-    echo "  ${BOLD}0)${NC} ❌ Beenden"
+    echo -e "  ${BOLD}1)${NC} 🚀 Neues Tunnel Setup (Erstinstallation)"
+    echo -e "  ${BOLD}2)${NC} 🔄 Tunnel Update/Konfiguration erneuern"
+    echo -e "  ${BOLD}3)${NC} 🧹 Tunnel komplett reset/bereinigen"
+    echo -e "  ${BOLD}4)${NC} 📊 Tunnel Status anzeigen"
+    echo -e "  ${BOLD}5)${NC} 🧪 Tunnel testen"
+    echo -e "  ${BOLD}6)${NC} 📜 Logs anzeigen"
+    echo -e "  ${BOLD}7)${NC} 🗑️ DNS-Records bereinigen (API-Token)"
+    echo -e "  ${BOLD}0)${NC} ❌ Beenden"
     echo ""
 }
 
@@ -505,10 +505,10 @@ show_status() {
     # Check service status
     echo "🔧 Service Status:"
     if systemctl is-active --quiet $SERVICE_NAME 2>/dev/null; then
-        echo "   Status: ${GREEN}Running${NC}"
+        echo -e "   Status: ${GREEN}Running${NC}"
         echo "   Uptime: $(systemctl show -p ActiveEnterTimestamp $SERVICE_NAME --value | cut -d' ' -f2-3)"
     else
-        echo "   Status: ${RED}Stopped${NC}"
+        echo -e "   Status: ${RED}Stopped${NC}"
     fi
 
     echo ""
@@ -520,7 +520,7 @@ show_status() {
         echo "   Hostname: $HOSTNAME"
         echo "   Config: $CONFIG_DIR/config.yml"
     else
-        echo "   ${RED}No configuration found${NC}"
+        echo -e "   ${RED}No configuration found${NC}"
     fi
 
     echo ""
@@ -952,9 +952,9 @@ dns_cleanup_menu() {
 
     echo ""
     echo "Optionen:"
-    echo "   ${BOLD}a)${NC} Alle Records löschen"
-    echo "   ${BOLD}s)${NC} Spezifische Records auswählen"
-    echo "   ${BOLD}c)${NC} Abbrechen"
+    echo -e "   ${BOLD}a)${NC} Alle Records löschen"
+    echo -e "   ${BOLD}s)${NC} Spezifische Records auswählen"
+    echo -e "   ${BOLD}c)${NC} Abbrechen"
     echo ""
 
     read -p "Wähle eine Option (a/s/c): " cleanup_choice
