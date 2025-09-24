@@ -77,13 +77,13 @@ def create_app():
         """Health check endpoint to confirm the service is running."""
         return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
 
-    @app.post("/jobs/wix", status_code=202, tags=["Jobs"])
-    def queue_wix_order_job(
+    @app.post("/webhook/orders", status_code=202, tags=["Webhooks"])
+    def handle_wix_order_webhook(
         payload: WebhookData,
         order_service: OrderService = Depends(get_order_service),
         wix_client: Optional[WixClient] = Depends(get_wix_client)
     ):
-        """Receives an order ID, fetches details, and creates print jobs."""
+        """Receives a webhook from Wix with an order ID, fetches details, and creates print jobs."""
         wix_order_id = payload.data.orderId
         logger.info(f"Received job request for Wix Order ID: {wix_order_id}")
 
