@@ -21,7 +21,9 @@ def test_order_printing():
 
     try:
         from wix_printer_service.wix_client import WixClient
-        from wix_printer_service.printer_manager import PrinterManager
+        from wix_printer_service.printer_client import PrinterClient
+        from wix_printer_service.receipt_formatter import ReceiptType, format_receipt
+        from wix_printer_service.models import Order
 
         print("🍓 RASPBERRY PI - ORDER PRINTING TEST")
         print("=" * 50)
@@ -33,9 +35,9 @@ def test_order_printing():
         wix_client = WixClient()
         print("✅ Wix Client initialized")
 
-        print("🖨️  Initializing Printer Manager...")
-        printer_manager = PrinterManager()
-        print("✅ Printer Manager initialized")
+        print("🖨️  Initializing Printer Client...")
+        printer_client = PrinterClient()
+        print("✅ Printer Client initialized")
 
         # Test API connection
         if not wix_client.test_connection():
@@ -80,19 +82,22 @@ def test_order_printing():
         # Test scenarios
         test_scenarios = [
             {
-                'name': 'Most Recent Order (Automatic)',
-                'order': orders[0],
-                'description': 'Print the most recent order automatically'
-            },
-            {
                 'name': 'Kitchen Receipt Format',
                 'order': orders[0],
+                'receipt_type': ReceiptType.KITCHEN,
                 'description': 'Print order in kitchen receipt format'
             },
             {
-                'name': 'Full Customer Receipt',
+                'name': 'Customer Receipt Format',
                 'order': orders[0],
+                'receipt_type': ReceiptType.CUSTOMER,
                 'description': 'Print complete customer receipt with all details'
+            },
+            {
+                'name': 'Driver Receipt Format',
+                'order': orders[0],
+                'receipt_type': ReceiptType.DRIVER,
+                'description': 'Print driver receipt with pickup details'
             }
         ]
 
@@ -103,19 +108,20 @@ def test_order_printing():
             print(f"   {scenario['description']}")
 
             try:
-                order = scenario['order']
-                order_id = order.get('id', 'Unknown')
+                order_data = scenario['order']
+                order_id = order_data.get('id', 'Unknown')
+                receipt_type = scenario['receipt_type']
 
-                # Different print formats based on scenario
-                if 'Kitchen' in scenario['name']:
-                    # Kitchen format - items only
-                    success = printer_manager.print_kitchen_order(order)
-                elif 'Customer' in scenario['name']:
-                    # Full customer receipt
-                    success = printer_manager.print_customer_receipt(order)
-                else:
-                    # Default format
-                    success = printer_manager.print_order(order)
+                # Convert order dict to Order model
+                order = Order.from_dict(order_data)
+
+                # Format receipt using the receipt formatter
+                print(f"   📝 Formatting receipt as {receipt_type.value}...")
+                receipt_content = format_receipt(order, receipt_type)
+
+                # Print the formatted receipt
+                print(f"   🖨️  Sending to printer...")
+                success = printer_client.print_receipt(receipt_content, f"{receipt_type.value.title()} Receipt")
 
                 if success:
                     print(f"   ✅ SUCCESS - Order {order_id[:8]}... printed successfully")
