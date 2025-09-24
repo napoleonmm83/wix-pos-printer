@@ -271,7 +271,7 @@ echo "2. Check status: sudo systemctl status wix-printer.service"
 read -p "❓ Do you want to start the services now? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    log "Starting services..."
+    log "Starting/Restarting services..."
     sudo systemctl restart wix-printer.service # Use restart to ensure new env is loaded
     sudo systemctl restart wix-printer-app.service
     sleep 3
