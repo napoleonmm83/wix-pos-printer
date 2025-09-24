@@ -86,6 +86,7 @@ class PrintManager:
         self._stop_event.clear()
         self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker_thread.start()
+        logger.info(f"!!! PRINT MANAGER WORKER THREAD LAUNCHED (Thread ID: {self._worker_thread.ident}) !!!")
         
         # Start recovery manager
         self.recovery_manager.start()
@@ -147,8 +148,6 @@ class PrintManager:
     
     def _worker_loop(self):
         """Main worker loop for processing print jobs."""
-        logger.info("!!! PRINT MANAGER WORKER THREAD HAS STARTED !!!")
-        
         # Give the main application a moment to fully start up
         time.sleep(5)
         
