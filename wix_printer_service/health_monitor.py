@@ -693,18 +693,18 @@ class HealthMonitor:
         
         try:
             with self.database.get_connection() as conn:
-                conn.execute("""
-                    INSERT INTO health_metrics 
-                    (resource_type, timestamp, value, status, metadata)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (
-                    metric.resource_type.value,
-                    metric.timestamp.isoformat(),
-                    metric.value,
-                    metric.status.value,
-                    str(metric.metadata) if metric.metadata else None
-                ))
-                conn.commit()
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO health_metrics 
+                        (resource_type, timestamp, value, status, metadata)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (
+                        metric.resource_type.value,
+                        metric.timestamp,
+                        metric.value,
+                        metric.status.value,
+                        json.dumps(metric.metadata) if metric.metadata else None
+                    ))
         except Exception as e:
             logger.error(f"Failed to log health metric: {e}")
     

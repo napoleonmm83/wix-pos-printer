@@ -190,16 +190,18 @@ class PrintManager:
     def _process_offline_queue(self):
         """Process items from the offline queue when printer is available."""
         try:
-            # Get print jobs from offline queue
-            queue_items = self.offline_queue.get_next_items(item_type="print_job", limit=10)
+                        # Get all items from the offline queue
+                        all_items = self.offline_queue.get_next_items(limit=10)
+                        
+                        # Filter for print jobs
+                        queue_items = [item for item in all_items if item.item_type == "print_job"]
             
-            if not queue_items:
-                return
+                        if not queue_items:
+                            return
             
-            logger.info(f"Processing {len(queue_items)} print jobs from offline queue")
+                        logger.info(f"Processing {len(queue_items)} print jobs from offline queue")
             
-            for queue_item in queue_items:
-                if self._stop_event.is_set():
+                        for queue_item in queue_items:                if self._stop_event.is_set():
                     break
                 
                 # Update queue item status to processing
