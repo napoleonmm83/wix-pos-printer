@@ -213,24 +213,49 @@ async def auto_check_new_orders():
     logging.info(f"Starting enhanced auto-check task (interval: {AUTO_CHECK_INTERVAL}s, look back: {AUTO_CHECK_HOURS_BACK}h)")
     logging.info("Auto-check now detects: NEW orders + UPDATED orders (qty changes, new items, address changes)")
 
+    cycle_count = 0
     while auto_check_running:
         try:
+            cycle_count += 1
             now = datetime.utcnow()
             from_date = (now - timedelta(hours=AUTO_CHECK_HOURS_BACK)).isoformat() + "Z"
+
+            logging.info(f"[SEARCH] Auto-check cycle #{cycle_count} starting - Looking for orders since {from_date}")
             orders = await fetch_wix_orders(from_date=from_date, limit=100)
+            logging.info(f"[FOUND] {len(orders)} orders in {AUTO_CHECK_HOURS_BACK}h window")
 
             new_orders = 0
             updated_orders = 0
+            skipped_orders = 0
 
             for order in orders:
                 order_id = order.get('id')
                 updated_date = order.get('updatedDate', '')
+                order_number = order.get('number', 'N/A')
+                order_status = order.get('status', 'N/A')
+                payment_status = order.get('paymentStatus', 'N/A')
+                fulfillment_status = order.get('fulfillmentStatus', 'N/A')
+                created_date = order.get('createdDate', '')
+
+                # Get price info for debugging
+                price_summary = order.get('priceSummary', {})
+                total_amount = price_summary.get('total', {}).get('amount', '0')
+                currency = order.get('currency', 'N/A')
 
                 if not order_id:
+                    logging.debug(f"⚠️ Order without ID found, skipping")
                     continue
+
+                # Enhanced debug log for every order
+                logging.info(f"[CHECK] Order #{order_number} ({order_id[:8]}...)")
+                logging.info(f"   Status: {order_status} | Payment: {payment_status} | Fulfillment: {fulfillment_status}")
+                logging.info(f"   Amount: {total_amount} {currency}")
+                logging.info(f"   Created: {created_date[:19]} | Updated: {updated_date[:19]}")
 
                 is_processed = is_order_already_processed(order_id)
                 is_updated = has_order_been_updated(order_id, updated_date)
+
+                logging.info(f"   DB-Check: Processed={is_processed} | Updated={is_updated}")
 
                 should_process = False
                 reason = ""
@@ -240,15 +265,21 @@ async def auto_check_new_orders():
                     should_process = True
                     reason = "new order"
                     new_orders += 1
+                    logging.info(f"[NEW] ORDER: #{order_number} ({total_amount} {currency}) - {order_status}")
                 elif is_updated:
                     # Existing order that has been updated
                     should_process = True
                     reason = "order updated"
                     updated_orders += 1
                     increment_reprint_count(order_id)
+                    logging.info(f"[UPDATED] ORDER: #{order_number} ({total_amount} {currency}) - {order_status}")
+                else:
+                    # Already processed and not updated
+                    skipped_orders += 1
+                    logging.info(f"[SKIP] #{order_number} already processed and unchanged")
 
                 if should_process:
-                    logging.info(f"Auto-check: Processing {order_id} ({reason})")
+                    logging.info(f"[PROCESS] Order #{order_number} ({order_id[:8]}...) - {reason}")
                     print_payload = {
                         "data": {"orderId": order_id},
                         "metadata": {
@@ -263,17 +294,32 @@ async def auto_check_new_orders():
                             response = await client.post(f"{PRINTER_SERVICE_URL}/webhook/orders", json=print_payload)
                             if response.status_code == 202:
                                 mark_order_as_processed(order_id, "sent", updated_date)
+                                logging.info(f"   [SUCCESS] Print job sent for #{order_number}")
                             else:
                                 mark_order_as_processed(order_id, "failed", updated_date)
+                                logging.warning(f"   [FAILED] Print job failed for #{order_number} - Status: {response.status_code}")
                     except Exception as e:
                         mark_order_as_processed(order_id, "error", updated_date)
-                        logging.error(f"Auto-check: Error processing order {order_id}: {e}")
+                        logging.error(f"   [ERROR] Processing #{order_number}: {e}")
+
+            # Always log cycle completion for debugging
+            logging.info(f"[COMPLETE] Auto-check cycle #{cycle_count} complete:")
+            logging.info(f"   Total orders found: {len(orders)}")
+            logging.info(f"   New orders processed: {new_orders}")
+            logging.info(f"   Updated orders processed: {updated_orders}")
+            logging.info(f"   Orders skipped (already processed): {skipped_orders}")
 
             if new_orders > 0 or updated_orders > 0:
-                logging.info(f"Auto-check cycle complete: {new_orders} new orders, {updated_orders} updated orders")
+                logging.info(f"[ACTION] {new_orders + updated_orders} orders sent to printer service")
+            else:
+                logging.info(f"[IDLE] No action needed: All orders already processed and up-to-date")
 
         except Exception as e:
-            logging.error(f"Auto-check: Error during order checking cycle: {e}")
+            logging.error(f"[ERROR] Auto-check: Error during cycle #{cycle_count}: {e}")
+            import traceback
+            logging.error(f"   Stack trace: {traceback.format_exc()}")
+
+        logging.info(f"[SLEEP] Auto-check sleeping for {AUTO_CHECK_INTERVAL}s until next cycle...")
         await asyncio.sleep(AUTO_CHECK_INTERVAL)
 
 async def start_auto_check_task():
