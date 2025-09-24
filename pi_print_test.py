@@ -113,7 +113,7 @@ def test_order_printing():
                 receipt_type = scenario['receipt_type']
 
                 # Convert order dict to Order model
-                order = Order.from_dict(order_data)
+                order = Order.from_wix_data(order_data)
 
                 # Format receipt using the receipt formatter
                 print(f"   📝 Formatting receipt as {receipt_type.value}...")
