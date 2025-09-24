@@ -237,7 +237,7 @@ class PrinterClient:
             
             # Print title if provided
             if title:
-                self.printer.set(align='center', text_type='B')  # Bold and centered
+                self.printer.set(align='center', bold=True)  # Bold and centered
                 self.printer.text(f"{title}\n")
                 self.printer.set()  # Reset formatting
                 self.printer.text("=" * 32 + "\n")  # Separator line
