@@ -100,10 +100,22 @@ test_printer_connection() {
     echo "🧪 Testing printer connection..."
     echo ""
 
-    # Check if python escpos is installed
-    if python3 -c "import escpos" 2>/dev/null; then
-        echo "  Testing with python-escpos..."
+    # Check if python escpos is installed (try both venv and system)
+    PYTHON_CMD=""
+    if [ -d "/opt/wix-printer-service/venv" ]; then
+        if /opt/wix-printer-service/venv/bin/python -c "import escpos" 2>/dev/null; then
+            PYTHON_CMD="/opt/wix-printer-service/venv/bin/python"
+            echo "  Testing with python-escpos (venv)..."
+        fi
+    fi
 
+    # Fallback to system python
+    if [ -z "$PYTHON_CMD" ] && python3 -c "import escpos" 2>/dev/null; then
+        PYTHON_CMD="python3"
+        echo "  Testing with python-escpos (system)..."
+    fi
+
+    if [ ! -z "$PYTHON_CMD" ]; then
         # Create test script
         cat << 'EOF' > /tmp/test_printer.py
 #!/usr/bin/env python3
@@ -151,17 +163,20 @@ except Exception as e:
     sys.exit(1)
 EOF
 
-        # Run test
-        if python3 /tmp/test_printer.py; then
+        # Run test with the correct Python command
+        if $PYTHON_CMD /tmp/test_printer.py; then
             echo -e "${GREEN}✅ Printer connection test successful!${NC}"
             echo "   A test receipt should have been printed."
             return 0
         else
             echo -e "${RED}❌ Printer connection test failed${NC}"
+            echo "   Try running the test with sudo if USB permissions are still needed:"
+            echo "   sudo $PYTHON_CMD /tmp/test_printer.py"
             return 1
         fi
     else
         echo -e "${YELLOW}⚠️  python-escpos not installed, skipping test${NC}"
+        echo "   Run option 5 (Install Dependencies) first"
         return 2
     fi
 }
@@ -249,10 +264,25 @@ install_dependencies() {
     echo "📦 Installing printer dependencies..."
     echo ""
 
-    # Check if venv exists
+    # Check if venv exists and is writable
     if [ -d "/opt/wix-printer-service/venv" ]; then
         echo "  Installing python-escpos in virtual environment..."
-        /opt/wix-printer-service/venv/bin/pip install python-escpos pyusb pyserial
+
+        # Check if we need sudo for venv
+        if [ -w "/opt/wix-printer-service/venv/lib" ]; then
+            /opt/wix-printer-service/venv/bin/pip install python-escpos pyusb pyserial
+        else
+            echo "  Using sudo for venv installation (permissions required)..."
+            sudo /opt/wix-printer-service/venv/bin/pip install python-escpos pyusb pyserial
+        fi
+
+        # Verify installation
+        if /opt/wix-printer-service/venv/bin/python -c "import escpos" 2>/dev/null; then
+            echo -e "${GREEN}  ✓ python-escpos successfully installed${NC}"
+        else
+            echo -e "${RED}  ✗ Installation failed, trying alternative method...${NC}"
+            sudo /opt/wix-printer-service/venv/bin/pip install --force-reinstall python-escpos pyusb pyserial
+        fi
     else
         echo "  Installing system-wide packages..."
         sudo apt-get update
