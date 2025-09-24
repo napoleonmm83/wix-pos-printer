@@ -28,27 +28,70 @@ detect_usb_printer() {
     echo "🔍 Detecting USB printers..."
     echo ""
 
-    # Check for USB printer devices
-    if lsusb | grep -i -E "epson|star|bixolon|citizen" > /dev/null 2>&1; then
-        echo -e "${GREEN}✅ USB printer detected:${NC}"
-        lsusb | grep -i -E "epson|star|bixolon|citizen"
+    # Reset global variables
+    DETECTED_VENDOR=""
+    DETECTED_PRODUCT=""
+    DETECTED_NAME=""
+
+    # Check for USB printer devices (expand search to include all printer classes)
+    USB_PRINTERS=$(lsusb | grep -i -E "epson|star|bixolon|citizen|printer|canon|hp|brother")
+
+    if [ ! -z "$USB_PRINTERS" ]; then
+        echo -e "${GREEN}✅ USB printer(s) detected:${NC}"
+        echo "$USB_PRINTERS"
         echo ""
 
-        # Get detailed info
-        USB_INFO=$(lsusb | grep -i -E "epson|star|bixolon|citizen" | head -1)
+        # Get the first detected printer
+        USB_INFO=$(echo "$USB_PRINTERS" | head -1)
         VENDOR_ID=$(echo $USB_INFO | sed -n 's/.*ID \([0-9a-f]*\):.*/\1/p')
         PRODUCT_ID=$(echo $USB_INFO | sed -n 's/.*ID [0-9a-f]*:\([0-9a-f]*\).*/\1/p')
 
-        echo "  Vendor ID:  0x${VENDOR_ID}"
-        echo "  Product ID: 0x${PRODUCT_ID}"
+        # Store detected values globally
+        DETECTED_VENDOR="0x${VENDOR_ID}"
+        DETECTED_PRODUCT="0x${PRODUCT_ID}"
+        DETECTED_NAME=$(echo $USB_INFO | cut -d' ' -f7-)
+
+        echo "  Auto-detected printer:"
+        echo "    Name:       $DETECTED_NAME"
+        echo "    Vendor ID:  $DETECTED_VENDOR"
+        echo "    Product ID: $DETECTED_PRODUCT"
         return 0
     else
+        echo -e "${YELLOW}⚠️  No obvious printer devices detected via lsusb${NC}"
+        echo ""
+        echo "  Checking USB device class 7 (printers)..."
+
+        # Alternative: Check for USB device class 7 (printer class)
+        USB_CLASS7=$(lsusb -v 2>/dev/null | grep -B5 -A5 "bInterfaceClass.*7 Printer" | grep "idVendor\|idProduct" | head -2)
+
+        if [ ! -z "$USB_CLASS7" ]; then
+            VENDOR_LINE=$(echo "$USB_CLASS7" | grep "idVendor" | head -1)
+            PRODUCT_LINE=$(echo "$USB_CLASS7" | grep "idProduct" | head -1)
+
+            if [ ! -z "$VENDOR_LINE" ] && [ ! -z "$PRODUCT_LINE" ]; then
+                VENDOR_ID=$(echo $VENDOR_LINE | sed -n 's/.*idVendor.*0x\([0-9a-f]*\).*/\1/p')
+                PRODUCT_ID=$(echo $PRODUCT_LINE | sed -n 's/.*idProduct.*0x\([0-9a-f]*\).*/\1/p')
+
+                DETECTED_VENDOR="0x${VENDOR_ID}"
+                DETECTED_PRODUCT="0x${PRODUCT_ID}"
+                DETECTED_NAME="USB Printer Class Device"
+
+                echo -e "${GREEN}✅ Found printer class USB device:${NC}"
+                echo "    Vendor ID:  $DETECTED_VENDOR"
+                echo "    Product ID: $DETECTED_PRODUCT"
+                return 0
+            fi
+        fi
+
         echo -e "${RED}❌ No USB printer detected${NC}"
         echo ""
         echo "  Please check:"
         echo "  1. Printer is powered on"
-        echo "  2. USB cable is connected"
-        echo "  3. Printer is in ready state (not in error)"
+        echo "  2. USB cable is connected properly"
+        echo "  3. Printer is not in error state"
+        echo "  4. USB cable is not faulty"
+        echo ""
+        echo "  You can still configure manually if you know the printer IDs"
         return 1
     fi
 }
@@ -240,22 +283,26 @@ configure_printer_env() {
     read -p "Do you want to update printer configuration? (y/n) [n]: " update_config
 
     if [[ "$update_config" == "y" ]]; then
-        # If printer was detected, suggest those values
-        if [ ! -z "$VENDOR_ID" ]; then
+        # If printer was auto-detected, suggest those values
+        if [ ! -z "$DETECTED_VENDOR" ] && [ ! -z "$DETECTED_PRODUCT" ]; then
             echo ""
-            echo "Detected printer IDs:"
-            echo "  Vendor:  0x${VENDOR_ID}"
-            echo "  Product: 0x${PRODUCT_ID}"
-            read -p "Use detected values? (y/n) [y]: " use_detected
+            echo "Auto-detected printer:"
+            echo "  Name:    $DETECTED_NAME"
+            echo "  Vendor:  $DETECTED_VENDOR"
+            echo "  Product: $DETECTED_PRODUCT"
+            read -p "Use auto-detected values? (y/n) [y]: " use_detected
 
             if [[ "$use_detected" != "n" ]]; then
-                PRINTER_VENDOR="0x${VENDOR_ID}"
-                PRINTER_PRODUCT="0x${PRODUCT_ID}"
+                PRINTER_VENDOR="$DETECTED_VENDOR"
+                PRINTER_PRODUCT="$DETECTED_PRODUCT"
+                echo "  Using auto-detected values: $DETECTED_VENDOR:$DETECTED_PRODUCT"
             else
                 read -p "Enter Vendor ID (e.g., 0x04b8): " PRINTER_VENDOR
                 read -p "Enter Product ID (e.g., 0x0202): " PRINTER_PRODUCT
             fi
         else
+            echo ""
+            echo "No printer auto-detected. Manual configuration required."
             read -p "Enter Vendor ID (e.g., 0x04b8) [$CURRENT_VENDOR]: " PRINTER_VENDOR
             PRINTER_VENDOR=${PRINTER_VENDOR:-$CURRENT_VENDOR}
 
@@ -366,14 +413,20 @@ quick_setup() {
 
     # Detect printer
     if detect_usb_printer; then
+        echo ""
+        echo "🔧 Auto-configuring detected printer:"
+        echo "  Name:    $DETECTED_NAME"
+        echo "  Vendor:  $DETECTED_VENDOR"
+        echo "  Product: $DETECTED_PRODUCT"
+
         # Setup permissions
         setup_usb_permissions
 
         # Install dependencies
         install_dependencies
 
-        # Configure printer
-        configure_printer_env
+        # Auto-configure with detected values
+        auto_configure_printer
 
         # Test connection
         test_printer_connection
@@ -382,11 +435,55 @@ quick_setup() {
         restart_printer_service
 
         echo ""
-        echo -e "${GREEN}✅ Printer setup completed!${NC}"
+        echo -e "${GREEN}✅ Quick printer setup completed!${NC}"
+        echo -e "${GREEN}   Configured: $DETECTED_NAME ($DETECTED_VENDOR:$DETECTED_PRODUCT)${NC}"
     else
         echo ""
-        echo -e "${YELLOW}Please connect your printer and try again${NC}"
+        echo -e "${YELLOW}⚠️  No printer auto-detected${NC}"
+        echo "   You can still configure manually using option 2"
+        echo ""
+        read -p "Continue with manual configuration? (y/n) [n]: " manual_config
+        if [[ "$manual_config" == "y" ]]; then
+            configure_printer_env
+        fi
     fi
+}
+
+# Function to auto-configure printer with detected values
+auto_configure_printer() {
+    echo "📝 Auto-configuring printer settings..."
+    echo ""
+
+    ENV_FILE="/opt/wix-printer-service/.env"
+
+    # Ensure .env exists
+    if [ ! -f "$ENV_FILE" ]; then
+        echo "  Creating .env file from template..."
+        if [ -f "/opt/wix-printer-service/.env.template" ]; then
+            cp /opt/wix-printer-service/.env.template $ENV_FILE
+        else
+            touch $ENV_FILE
+        fi
+    fi
+
+    echo "  Updating .env with auto-detected values..."
+
+    # Remove old entries
+    grep -v "^PRINTER_USB_VENDOR_ID=" $ENV_FILE | grep -v "^PRINTER_USB_PRODUCT_ID=" | grep -v "^PRINTER_INTERFACE=" > ${ENV_FILE}.tmp
+
+    # Add new entries with detected values
+    cat << EOF >> ${ENV_FILE}.tmp
+
+# Printer Configuration (Auto-detected: $DETECTED_NAME)
+PRINTER_USB_VENDOR_ID=$DETECTED_VENDOR
+PRINTER_USB_PRODUCT_ID=$DETECTED_PRODUCT
+PRINTER_INTERFACE=usb
+PRINTER_CHARSET=CP858
+PRINTER_WIDTH=48
+EOF
+
+    mv ${ENV_FILE}.tmp $ENV_FILE
+    echo -e "${GREEN}✅ Printer auto-configured: $DETECTED_VENDOR:$DETECTED_PRODUCT${NC}"
 }
 
 # Main execution
