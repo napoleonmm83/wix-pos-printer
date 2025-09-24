@@ -264,6 +264,34 @@ create_tunnel() {
     if [[ -n "$EXISTING_TUNNEL" ]]; then
         log "✅ Found existing tunnel: $TUNNEL_NAME (ID: $EXISTING_TUNNEL)"
         TUNNEL_ID="$EXISTING_TUNNEL"
+
+        # Check if credentials file exists for existing tunnel
+        TUNNEL_CREDS="$HOME/.cloudflared/$TUNNEL_ID.json"
+        if [[ ! -f "$TUNNEL_CREDS" ]]; then
+            warn "Existing tunnel found but credentials missing"
+            log "Recreating tunnel to generate new credentials..."
+
+            # Delete existing tunnel and create new one
+            if cloudflared tunnel delete "$TUNNEL_ID" --force 2>/dev/null; then
+                log "✅ Old tunnel deleted successfully"
+            else
+                warn "Could not delete old tunnel, continuing anyway..."
+            fi
+
+            # Create new tunnel
+            if cloudflared tunnel create "$TUNNEL_NAME"; then
+                TUNNEL_ID=$(cloudflared tunnel list | grep "$TUNNEL_NAME" | awk '{print $1}')
+                if [[ -z "$TUNNEL_ID" ]]; then
+                    error "Could not find tunnel ID after recreation"
+                    return 1
+                fi
+                log "✅ New tunnel created successfully (ID: $TUNNEL_ID)"
+                TUNNEL_RECREATED="true"
+            else
+                error "Failed to recreate tunnel"
+                return 1
+            fi
+        fi
     else
         log "Creating new tunnel: $TUNNEL_NAME"
         if cloudflared tunnel create "$TUNNEL_NAME"; then
@@ -273,6 +301,7 @@ create_tunnel() {
                 return 1
             fi
             log "✅ Tunnel created successfully (ID: $TUNNEL_ID)"
+            TUNNEL_RECREATED="true"
         else
             error "Failed to create tunnel"
             return 1
@@ -370,6 +399,13 @@ EOF
         return 0
     else
         error "Tunnel credentials not found at $TUNNEL_CREDS"
+        error "This should have been handled during tunnel creation"
+        error "Please try running the tunnel setup again"
+
+        # List available credential files for debugging
+        log "Available credential files:"
+        ls -la "$HOME/.cloudflared/"*.json 2>/dev/null || log "No credential files found"
+
         return 1
     fi
 }
@@ -662,16 +698,22 @@ setup_new_tunnel() {
         return 1
     fi
 
-    # Create DNS record
+    # Create/Update DNS record (may need to update if tunnel ID changed)
     if ! create_dns_record; then
-        error "DNS record creation failed"
-        read -p "Press ENTER to continue..."
-        return 1
+        warn "DNS record creation failed, but continuing with tunnel setup"
+        warn "You may need to manually update your DNS record"
     fi
 
     # Create configuration
     if ! create_tunnel_config; then
         error "Configuration creation failed"
+
+        # If tunnel was recreated, we need to update DNS as well
+        if [[ "${TUNNEL_RECREATED:-}" == "true" ]]; then
+            log "Since tunnel was recreated, attempting DNS update again..."
+            create_dns_record || warn "DNS update still failed - manual intervention may be needed"
+        fi
+
         read -p "Press ENTER to continue..."
         return 1
     fi
