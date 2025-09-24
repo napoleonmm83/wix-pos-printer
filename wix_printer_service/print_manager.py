@@ -147,7 +147,10 @@ class PrintManager:
     
     def _worker_loop(self):
         """Main worker loop for processing print jobs."""
-        logger.info("Print Manager worker loop started")
+        logger.info("!!! PRINT MANAGER WORKER THREAD HAS STARTED !!!")
+        
+        # Give the main application a moment to fully start up
+        time.sleep(5)
         
         while self._running and not self._stop_event.is_set():
             try:
@@ -784,9 +787,11 @@ class PrintManager:
         try:
             # Connect if not already connected
             if not self.printer_client.is_connected:
+                logger.info("Printer not connected. Attempting to connect...")
                 if not self.printer_client.connect():
-                    logger.error("Failed to connect to printer")
+                    logger.error("Failed to connect to printer. Check USB connection and permissions.")
                     return False
+                logger.info("Printer connected successfully.")
             
             # Check printer status
             status = self.printer_client.get_status()
