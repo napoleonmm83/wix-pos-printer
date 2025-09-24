@@ -89,11 +89,40 @@ install_cloudflared() {
     CLOUDFLARED_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$CLOUDFLARED_ARCH"
     log "Downloading cloudflared for $ARCH..."
 
-    curl -L --output /tmp/cloudflared "$CLOUDFLARED_URL"
-    sudo mv /tmp/cloudflared /usr/local/bin/
-    sudo chmod +x /usr/local/bin/cloudflared
+    if curl -L --output /tmp/cloudflared "$CLOUDFLARED_URL"; then
+        sudo mv /tmp/cloudflared /usr/local/bin/
+        sudo chmod +x /usr/local/bin/cloudflared
 
-    log "✅ cloudflared installed successfully"
+        # Verify installation
+        if cloudflared version >/dev/null 2>&1; then
+            log "✅ cloudflared installed and verified successfully"
+        else
+            error "cloudflared installation failed - binary not functional"
+            log "Trying alternative installation method..."
+
+            # Try package manager installation as fallback
+            if command -v apt-get >/dev/null 2>&1; then
+                log "Installing via apt package manager..."
+                curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+                echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
+                sudo apt-get update && sudo apt-get install -y cloudflared
+
+                if cloudflared version >/dev/null 2>&1; then
+                    log "✅ cloudflared installed via package manager"
+                else
+                    error "Package manager installation also failed"
+                    exit 1
+                fi
+            else
+                error "No alternative installation method available"
+                exit 1
+            fi
+        fi
+    else
+        error "Failed to download cloudflared"
+        log "Please check your internet connection and try again"
+        exit 1
+    fi
 }
 
 cleanup_old_tunnel() {
@@ -602,11 +631,15 @@ show_logs() {
 setup_new_tunnel() {
     log "🚀 Starting new tunnel setup..."
 
-    # Check if cloudflared is installed
+    # Check if cloudflared is properly installed and functional
     if ! command -v cloudflared >/dev/null 2>&1; then
+        log "cloudflared not found, installing..."
+        install_cloudflared
+    elif ! cloudflared version >/dev/null 2>&1; then
+        log "cloudflared found but not functional, reinstalling..."
         install_cloudflared
     else
-        log "✅ cloudflared is already installed"
+        log "✅ cloudflared is already installed and functional"
     fi
 
     # Get domain configuration
