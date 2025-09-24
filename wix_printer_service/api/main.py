@@ -39,9 +39,8 @@ global_instances: Dict[str, Any] = {}
 def get_database() -> Database:
     """Dependency injection for Database."""
     if "database" not in global_instances:
+        # Creating an instance of Database automatically initializes the schema.
         global_instances["database"] = Database()
-        # Initialize the database schema if needed
-        global_instances["database"].init_db()
     return global_instances["database"]
 
 def get_printer_client() -> PrinterClient:
