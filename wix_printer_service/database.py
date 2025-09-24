@@ -150,10 +150,11 @@ class Database:
                     
                     # Use INSERT ... ON CONFLICT for "upsert" behavior
                     # Sanitize JSON strings to remove null characters, which PostgreSQL does not support.
-                    items_json_str = json.dumps(order_dict['items_json']).replace('\u0000', '')
-                    customer_json_str = json.dumps(order_dict['customer_json']).replace('\u0000', '')
-                    delivery_json_str = json.dumps(order_dict['delivery_json']).replace('\u0000', '')
-                    raw_data_json_str = json.dumps(order_dict['raw_data_json']).replace('\u0000', '')
+                    # Note: order_dict values are already JSON strings from to_dict(), don't double-encode
+                    items_json_str = order_dict['items_json'].replace('\u0000', '').replace('\x00', '') if order_dict['items_json'] else '{}'
+                    customer_json_str = order_dict['customer_json'].replace('\u0000', '').replace('\x00', '') if order_dict['customer_json'] else '{}'
+                    delivery_json_str = order_dict['delivery_json'].replace('\u0000', '').replace('\x00', '') if order_dict['delivery_json'] else '{}'
+                    raw_data_json_str = order_dict['raw_data_json'].replace('\u0000', '').replace('\x00', '') if order_dict['raw_data_json'] else '{}'
 
                     cursor.execute("""
                         INSERT INTO orders (
