@@ -120,17 +120,38 @@ test_printer_connection() {
         cat << 'EOF' > /tmp/test_printer.py
 #!/usr/bin/env python3
 import sys
+import os
+from dotenv import load_dotenv
+
 try:
     from escpos.printer import Usb
 
-    # Common printer vendor/product IDs
-    printers = [
+    # Load environment variables
+    load_dotenv("/opt/wix-printer-service/.env")
+
+    # Get printer IDs from environment
+    env_vendor = os.getenv("PRINTER_USB_VENDOR_ID")
+    env_product = os.getenv("PRINTER_USB_PRODUCT_ID")
+
+    printers = []
+
+    # Add environment configured printer first
+    if env_vendor and env_product:
+        try:
+            vendor_id = int(env_vendor, 16) if env_vendor.startswith('0x') else int(env_vendor)
+            product_id = int(env_product, 16) if env_product.startswith('0x') else int(env_product)
+            printers.append((vendor_id, product_id, f"Configured Printer ({env_vendor}:{env_product})"))
+        except ValueError:
+            pass
+
+    # Add common printer vendor/product IDs as fallback
+    printers.extend([
+        (0x04b8, 0x0202, "Epson TM-m30III"),
         (0x04b8, 0x0e15, "Epson TM-T88V"),
         (0x04b8, 0x0e03, "Epson TM-T20"),
-        (0x04b8, 0x0202, "Epson TM-T88II"),
         (0x0519, 0x0001, "Star Micronics"),
         (0x1504, 0x0006, "Bixolon"),
-    ]
+    ])
 
     found = False
     for vendor, product, name in printers:
@@ -140,17 +161,23 @@ try:
             p.text("=== Printer Test ===\n")
             p.text("Connection successful!\n")
             p.text(f"Model: {name}\n")
+            p.text(f"Vendor: 0x{vendor:04x}\n")
+            p.text(f"Product: 0x{product:04x}\n")
             p.text("====================\n\n")
             p.cut()
             p.close()
             found = True
             break
-        except:
+        except Exception as e:
+            print(f"Failed to connect to {name}: {e}")
             continue
 
     if not found:
-        print("❌ Could not connect to printer")
+        print("❌ Could not connect to any printer")
         print("   Check USB permissions and cable")
+        print("   Current ENV config:")
+        print(f"     PRINTER_USB_VENDOR_ID={env_vendor}")
+        print(f"     PRINTER_USB_PRODUCT_ID={env_product}")
         sys.exit(1)
 
     sys.exit(0)
@@ -199,8 +226,8 @@ configure_printer_env() {
     fi
 
     # Get current values or set defaults
-    CURRENT_VENDOR=$(grep "^PRINTER_VENDOR_ID=" $ENV_FILE 2>/dev/null | cut -d'=' -f2 || echo "0x04b8")
-    CURRENT_PRODUCT=$(grep "^PRINTER_PRODUCT_ID=" $ENV_FILE 2>/dev/null | cut -d'=' -f2 || echo "0x0e15")
+    CURRENT_VENDOR=$(grep "^PRINTER_USB_VENDOR_ID=" $ENV_FILE 2>/dev/null | cut -d'=' -f2 || echo "0x04b8")
+    CURRENT_PRODUCT=$(grep "^PRINTER_USB_PRODUCT_ID=" $ENV_FILE 2>/dev/null | cut -d'=' -f2 || echo "0x0202")
     CURRENT_INTERFACE=$(grep "^PRINTER_INTERFACE=" $ENV_FILE 2>/dev/null | cut -d'=' -f2 || echo "usb")
 
     # Ask for printer configuration
@@ -226,13 +253,13 @@ configure_printer_env() {
                 PRINTER_PRODUCT="0x${PRODUCT_ID}"
             else
                 read -p "Enter Vendor ID (e.g., 0x04b8): " PRINTER_VENDOR
-                read -p "Enter Product ID (e.g., 0x0e15): " PRINTER_PRODUCT
+                read -p "Enter Product ID (e.g., 0x0202): " PRINTER_PRODUCT
             fi
         else
             read -p "Enter Vendor ID (e.g., 0x04b8) [$CURRENT_VENDOR]: " PRINTER_VENDOR
             PRINTER_VENDOR=${PRINTER_VENDOR:-$CURRENT_VENDOR}
 
-            read -p "Enter Product ID (e.g., 0x0e15) [$CURRENT_PRODUCT]: " PRINTER_PRODUCT
+            read -p "Enter Product ID (e.g., 0x0202) [$CURRENT_PRODUCT]: " PRINTER_PRODUCT
             PRINTER_PRODUCT=${PRINTER_PRODUCT:-$CURRENT_PRODUCT}
         fi
 
@@ -241,14 +268,14 @@ configure_printer_env() {
         echo "  Updating .env file..."
 
         # Remove old entries
-        grep -v "^PRINTER_VENDOR_ID=" $ENV_FILE | grep -v "^PRINTER_PRODUCT_ID=" | grep -v "^PRINTER_INTERFACE=" > ${ENV_FILE}.tmp
+        grep -v "^PRINTER_USB_VENDOR_ID=" $ENV_FILE | grep -v "^PRINTER_USB_PRODUCT_ID=" | grep -v "^PRINTER_INTERFACE=" > ${ENV_FILE}.tmp
 
         # Add new entries
         cat << EOF >> ${ENV_FILE}.tmp
 
 # Printer Configuration
-PRINTER_VENDOR_ID=${PRINTER_VENDOR}
-PRINTER_PRODUCT_ID=${PRINTER_PRODUCT}
+PRINTER_USB_VENDOR_ID=${PRINTER_VENDOR}
+PRINTER_USB_PRODUCT_ID=${PRINTER_PRODUCT}
 PRINTER_INTERFACE=usb
 PRINTER_CHARSET=CP858
 PRINTER_WIDTH=48
