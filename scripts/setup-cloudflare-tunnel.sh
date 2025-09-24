@@ -1,117 +1,19 @@
-# Cache permission groups to avoid multiple API calls
-CF_PERMISSION_GROUPS_JSON=""
-CF_PERMISSION_GROUPS_FILE=""
-
-fetch_permission_groups() {
-    if [[ -n "$CF_PERMISSION_GROUPS_JSON" ]]; then
-        return 0
-    fi
-
-    if [[ -z "$CF_EMAIL" || -z "$CF_GLOBAL_KEY" ]]; then
-        error "DEBUG: CF_EMAIL or CF_GLOBAL_KEY is empty"
-        return 1
-    fi
-
-    log "DEBUG: Calling Cloudflare permission groups API..."
-    CF_PERMISSION_GROUPS_JSON=$(curl -s -X GET "https://api.cloudflare.com/client/v4/user/tokens/permission_groups" \
-        -H "X-Auth-Email: $CF_EMAIL" \
-        -H "X-Auth-Key: $CF_GLOBAL_KEY" \
-        -H "Content-Type: application/json")
-
-    if [[ -z "$CF_PERMISSION_GROUPS_JSON" ]]; then
-        error "Cloudflare permission group call returned empty response"
-        return 1
-    fi
-
-    log "DEBUG: API response length: ${#CF_PERMISSION_GROUPS_JSON} characters"
-    
-    if ! echo "$CF_PERMISSION_GROUPS_JSON" | grep -q '"success":true'; then
-        error "Unable to fetch Cloudflare permission groups."
-        echo "DEBUG: Full API response:"
-        echo "$CF_PERMISSION_GROUPS_JSON"
-        CF_PERMISSION_GROUPS_JSON=""
-        return 1
-    fi
-
-    log "DEBUG: Permission groups fetched successfully"
-
-    if [[ -z "$CF_PERMISSION_GROUPS_FILE" ]]; then
-        CF_PERMISSION_GROUPS_FILE=$(mktemp)
-        trap '[[ -n "$CF_PERMISSION_GROUPS_FILE" && -f "$CF_PERMISSION_GROUPS_FILE" ]] && rm -f "$CF_PERMISSION_GROUPS_FILE"' EXIT
-    fi
-
-    printf '%s' "$CF_PERMISSION_GROUPS_JSON" > "$CF_PERMISSION_GROUPS_FILE"
-    return 0
-}
-
-get_permission_group_id() {
-    local name="$1"
-    [[ -z "$name" ]] && return 1
-
-    fetch_permission_groups || return 1
-
-    local id
-    id=$(python3 - "$name" "$CF_PERMISSION_GROUPS_FILE" <<'PY'
-import json
-import sys
-
-if len(sys.argv) < 3:
-    sys.exit(1)
-
-name = sys.argv[1]
-file_path = sys.argv[2]
-
-NAME_ALIASES = {
-    "Zone:Zone:Read": ["Zone:Zone:Read", "Zone Read"],
-    "Zone:DNS:Edit": ["Zone:DNS:Edit", "DNS Write", "DNS Edit"],
-    "Cloudflare Tunnel:Edit": ["Cloudflare Tunnel:Edit", "Cloudflare Tunnel Write", "Cloudflare Tunnel Read"],
-    "Account Settings Read": ["Account Settings Read"],
-}
-
-try:
-    with open(file_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-except Exception:
-    sys.exit(1)
-
-aliases = NAME_ALIASES.get(name, [name])
-
-for candidate in aliases:
-    for item in data.get("result", []):
-        if item.get("name") == candidate:
-            print(item.get("id", ""))
-            sys.exit(0)
-
-sys.exit(1)
-PY
-)
-
-    if [[ -z "$id" ]]; then
-        error "Permission group '$name' not found or could not be parsed."
-        echo "$CF_PERMISSION_GROUPS_JSON"
-        return 1
-    fi
-
-    echo "$id"
-    return 0
-}
 #!/bin/bash
 
 # 🌐 Cloudflare Tunnel Setup Script
-# Wix Printer Service - Dynamic IP Solution
-# Version: 1.0
-# Date: 2025-09-21
+# Wix Printer Service - Browser Authentication + Optional API Management
+# Version: 2.1
+# Date: 2025-09-24
 
-set -e  # Exit on any error
-
-# Debug mode - uncomment for troubleshooting
-# set -x
+set -e
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 log() {
@@ -130,618 +32,251 @@ info() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO: $1${NC}" >&2
 }
 
-echo ""
-echo "=========================================="
-echo "🌐 CLOUDFLARE TUNNEL SETUP"
-echo "=========================================="
-echo ""
-echo "This script will set up a secure Cloudflare Tunnel for your"
-echo "Wix Printer Service, eliminating the need for:"
-echo ""
-echo "❌ Static IP addresses"
-echo "❌ Router port forwarding"
-echo "❌ Manual SSL certificate management"
-echo "❌ Firewall configuration"
-echo ""
-echo "✅ BENEFITS:"
-echo "   • Works with any internet connection"
-echo "   • Automatic SSL certificates"
-echo "   • Built-in DDoS protection"
-echo "   • No router configuration needed"
-echo "   • Enterprise-grade security"
-echo ""
+header() {
+    echo -e "${CYAN}${BOLD}$1${NC}"
+}
 
-# Prerequisites check
-echo "📋 PREREQUISITES:"
-echo "   1. Cloudflare account (free)"
-echo "   2. Domain name added to Cloudflare"
-echo "   3. Cloudflare API token or login credentials"
-echo ""
-
-read -p "❓ Do you have a Cloudflare account and domain ready? (y/N): " -r
-echo ""
-
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "📚 SETUP INSTRUCTIONS:"
-    echo ""
-    echo "1️⃣ CREATE CLOUDFLARE ACCOUNT:"
-    echo "   • Go to https://cloudflare.com"
-    echo "   • Sign up for free account"
-    echo ""
-    echo "2️⃣ ADD YOUR DOMAIN:"
-    echo "   • Add your domain to Cloudflare"
-    echo "   • Update nameservers at your domain registrar"
-    echo "   • Wait for DNS propagation (5-30 minutes)"
-    echo ""
-    echo "3️⃣ GET API TOKEN:"
-    echo "   • Go to Cloudflare Dashboard → My Profile → API Tokens"
-    echo "   • Create Token → Custom Token"
-    echo "   • Permissions: Zone:Zone:Read, Zone:DNS:Edit"
-    echo "   • Zone Resources: Include → Specific zone → your-domain.com"
-    echo ""
-    echo "💡 Come back and run this script when ready!"
-    exit 0
-fi
-
-# Get domain information
-echo "🌐 DOMAIN CONFIGURATION:"
-echo "----------------------------------------"
-while [[ -z "$DOMAIN" ]]; do
-    echo -n "Enter your domain name (e.g., example.com): "
-    read DOMAIN
-    if [[ -z "$DOMAIN" ]]; then
-        warn "Domain name is required"
-    fi
-done
-
-echo -n "Enter subdomain for printer service (default: printer): "
-read SUBDOMAIN
-if [[ -z "$SUBDOMAIN" ]]; then
-    SUBDOMAIN="printer"
-fi
-
-FULL_DOMAIN="$SUBDOMAIN.$DOMAIN"
+# Constants
 TUNNEL_NAME="wix-pos-printer-tunnel"
+SERVICE_PORT="8000"
+CONFIG_DIR="/etc/cloudflared"
+SERVICE_NAME="cloudflared"
 
-echo ""
-log "Configuration:"
-log "  Full Domain: $FULL_DOMAIN"
-log "  This will be your webhook URL: https://$FULL_DOMAIN/webhook/orders"
-echo ""
-
-# Install cloudflared
-log "📦 Installing cloudflared..."
-
-# Detect architecture
-ARCH=$(uname -m)
-case $ARCH in
-    x86_64)
-        CLOUDFLARED_ARCH="amd64"
-        ;;
-    aarch64|arm64)
-        CLOUDFLARED_ARCH="arm64"
-        ;;
-    armv7l|armv6l)
-        CLOUDFLARED_ARCH="arm"
-        ;;
-    *)
-        error "Unsupported architecture: $ARCH"
-        exit 1
-        ;;
-esac
-
-# Download and install cloudflared
-CLOUDFLARED_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$CLOUDFLARED_ARCH"
-log "Downloading cloudflared for $ARCH..."
-
-curl -L --output cloudflared "$CLOUDFLARED_URL"
-sudo mv cloudflared /usr/local/bin/
-sudo chmod +x /usr/local/bin/cloudflared
-
-log "✅ cloudflared installed successfully"
-
-# Authenticate with Cloudflare
-echo ""
-echo "🔐 CLOUDFLARE AUTHENTICATION:"
-echo "----------------------------------------"
-echo ""
-echo "You have three options to authenticate:"
-echo ""
-echo "1️⃣ AUTOMATIC API SETUP (RECOMMENDED) ⭐"
-echo "   • Fully automated with API token"
-echo "   • No browser interaction needed"
-echo "   • Creates API token automatically"
-echo "   • Most secure and reliable"
-echo ""
-echo "2️⃣ MANUAL API TOKEN"
-echo "   • Use your existing API token"
-echo "   • No browser required"
-echo "   • Advanced users"
-echo ""
-echo "3️⃣ BROWSER LOGIN"
-echo "   • Interactive browser login"
-echo "   • Good for first-time users"
-echo "   • Requires manual interaction"
-echo ""
-
-# Function to create API token automatically
-create_api_token_automatically() {
+show_menu() {
+    clear
+    header "=========================================="
+    header "🌐 CLOUDFLARE TUNNEL MANAGER"
+    header "=========================================="
     echo ""
-    echo "🔑 AUTOMATIC API TOKEN CREATION:"
-    echo "----------------------------------------"
+    echo "Wix POS Printer Service - Tunnel Management"
+    echo "Browser-Based Setup & Maintenance Tool"
     echo ""
-    echo "We'll create a secure API token automatically for tunnel management."
+    header "VERFÜGBARE OPTIONEN:"
     echo ""
-    echo "📋 REQUIRED CREDENTIALS:"
-    echo "   • Cloudflare email address"
-    echo "   • Cloudflare Global API Key (for initial setup only)"
+    echo "  ${BOLD}1)${NC} 🚀 Neues Tunnel Setup (Erstinstallation)"
+    echo "  ${BOLD}2)${NC} 🔄 Tunnel Update/Konfiguration erneuern"
+    echo "  ${BOLD}3)${NC} 🧹 Tunnel komplett reset/bereinigen"
+    echo "  ${BOLD}4)${NC} 📊 Tunnel Status anzeigen"
+    echo "  ${BOLD}5)${NC} 🧪 Tunnel testen"
+    echo "  ${BOLD}6)${NC} 📜 Logs anzeigen"
+    echo "  ${BOLD}7)${NC} 🗑️ DNS-Records bereinigen (API-Token)"
+    echo "  ${BOLD}0)${NC} ❌ Beenden"
     echo ""
-    echo "ℹ️  HOW TO GET GLOBAL API KEY:"
-    echo "   1. Go to https://dash.cloudflare.com/profile/api-tokens"
-    echo "   2. Scroll down to 'Global API Key'"
-    echo "   3. Click 'View' and copy the key"
-    echo ""
-    
-    echo -n "Enter your Cloudflare email: "
-    read CF_EMAIL
-    
-    echo -n "Enter your Cloudflare Global API Key: "
-    read -s CF_GLOBAL_KEY
-    echo ""
-    
-    if [[ -z "$CF_EMAIL" || -z "$CF_GLOBAL_KEY" ]]; then
-        error "Email and Global API Key are required"
-        return 1
-    fi
-    
-    log "🔧 Creating dedicated API token for tunnel management..."
-    
-    log "DEBUG: Fetching permission group IDs..."
-    local zone_read_id zone_dns_edit_id tunnel_edit_id account_settings_read_id
-    
-    log "DEBUG: Getting Zone:Zone:Read permission ID..."
-    zone_read_id=$(get_permission_group_id "Zone:Zone:Read")
-    if [[ $? -ne 0 || -z "$zone_read_id" ]]; then
-        error "Failed to get Zone:Zone:Read permission ID"
-        return 1
-    fi
-    log "DEBUG: Zone:Zone:Read ID = $zone_read_id"
-    
-    log "DEBUG: Getting Zone:DNS:Edit permission ID..."
-    zone_dns_edit_id=$(get_permission_group_id "Zone:DNS:Edit")
-    if [[ $? -ne 0 || -z "$zone_dns_edit_id" ]]; then
-        error "Failed to get Zone:DNS:Edit permission ID"
-        return 1
-    fi
-    log "DEBUG: Zone:DNS:Edit ID = $zone_dns_edit_id"
-    
-    log "DEBUG: Getting Cloudflare Tunnel:Edit permission ID..."
-    tunnel_edit_id=$(get_permission_group_id "Cloudflare Tunnel:Edit")
-    if [[ $? -ne 0 || -z "$tunnel_edit_id" ]]; then
-        error "Failed to get Cloudflare Tunnel:Edit permission ID"
-        return 1
-    fi
-    log "DEBUG: Cloudflare Tunnel:Edit ID = $tunnel_edit_id"
-    
-    log "DEBUG: Getting Account Settings permission ID..."
-    account_settings_read_id=$(get_permission_group_id "Account Settings Read")
-    if [[ $? -ne 0 || -z "$account_settings_read_id" ]]; then
-        error "Failed to get Account Settings Read permission ID"
-        return 1
-    fi
-    log "DEBUG: Account Settings Read ID = $account_settings_read_id"
-    
-    log "DEBUG: All permission IDs retrieved successfully, creating token..."
-
-    local token_payload_file
-    token_payload_file=$(mktemp)
-    trap '[[ -n "$token_payload_file" && -f "$token_payload_file" ]] && rm -f "$token_payload_file"' RETURN
-
-    log "DEBUG: Writing token payload to $token_payload_file"
-    cat > "$token_payload_file" <<EOF
-{
-  "name": "Wix Printer Tunnel - $(date -u +%Y%m%d-%H%M%S)",
-  "policies": [
-    {
-      "effect": "allow",
-      "resources": {
-        "com.cloudflare.api.account.zone.*": "*"
-      },
-      "permission_groups": [
-        {
-          "id": "$zone_read_id",
-          "name": "Zone Read"
-        },
-        {
-          "id": "$zone_dns_edit_id",
-          "name": "DNS Write"
-        }
-      ]
-    },
-    {
-      "effect": "allow",
-      "resources": {
-        "com.cloudflare.api.account.*": "*"
-      },
-      "permission_groups": [
-        {
-          "id": "$tunnel_edit_id",
-          "name": "Cloudflare Tunnel Write"
-        },
-        {
-          "id": "$account_settings_read_id",
-          "name": "Account Settings Read"
-        }
-      ]
-    }
-  ],
-  "not_before": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "expires_on": "$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ)"
-}
-EOF
-
-    # Create API token with minimal required permissions
-    API_TOKEN_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/user/tokens" \
-        -H "X-Auth-Email: $CF_EMAIL" \
-        -H "X-Auth-Key: $CF_GLOBAL_KEY" \
-        -H "Content-Type: application/json" \
-        --data @"$token_payload_file")
-    
-    # Check if token creation was successful
-    if echo "$API_TOKEN_RESPONSE" | grep -q '"success":true'; then
-        CF_API_TOKEN=$(echo "$API_TOKEN_RESPONSE" | grep -o '"value":"[^"]*' | cut -d'"' -f4)
-        
-        if [[ -n "$CF_API_TOKEN" ]]; then
-            log "✅ API token created successfully!"
-            log "Token expires: $(date -d '+1 year' '+%Y-%m-%d')"
-
-            # Save token securely for cloudflared
-            mkdir -p ~/.cloudflared
-            echo "$CF_API_TOKEN" > ~/.cloudflared/token
-            chmod 600 ~/.cloudflared/token
-
-            # Set environment variable
-            export CLOUDFLARE_API_TOKEN="$CF_API_TOKEN"
-
-            # Retrieve and store account ID for subsequent API calls
-            local verify_response
-            verify_response=$(curl -s -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
-                -H "Authorization: Bearer $CF_API_TOKEN" \
-                -H "Content-Type: application/json")
-
-            ACCOUNT_ID=$(echo "$verify_response" | python3 - <<'PY'
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    print(data.get("result", {}).get("account", {}).get("id", ""))
-except Exception:
-    pass
-PY
-)
-
-            if [[ -n "$ACCOUNT_ID" ]]; then
-                log "✅ Retrieved Cloudflare Account ID: $ACCOUNT_ID"
-            else
-                warn "Unable to determine Cloudflare Account ID from token verify response. API tunnel creation may fall back to cloudflared."
-            fi
-
-            # Create credentials file for cloudflared
-            cat > ~/.cloudflared/cert.pem <<EOF
-# Cloudflare API Token for Tunnel Management
-# Created: $(date)
-# Domain: $DOMAIN
-# Account ID: $ACCOUNT_ID
-# Token: $CF_API_TOKEN
-EOF
-            chmod 600 ~/.cloudflared/cert.pem
-            
-            return 0
-        else
-            error "Failed to extract API token from response"
-            return 1
-        fi
-    else
-        error "Failed to create API token"
-        error "Token payload was:"
-        cat "$token_payload_file" >&2
-        echo "$API_TOKEN_RESPONSE"
-        return 1
-    fi
 }
 
-# Function to authenticate with API token
-authenticate_with_api_token() {
-    local token="$1"
-    
-    # Test the token
-    TEST_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
-        -H "Authorization: Bearer $token" \
-        -H "Content-Type: application/json")
-    
-    if echo "$TEST_RESPONSE" | grep -q '"success":true'; then
-        log "✅ API token is valid!"
-        
-        # Set up cloudflared with API token
-        export CLOUDFLARE_API_TOKEN="$token"
-        
-        # Save token for cloudflared
-        mkdir -p ~/.cloudflared
-        echo "$token" > ~/.cloudflared/token
-        chmod 600 ~/.cloudflared/token
-        
-        return 0
-    else
-        error "Invalid API token"
-        echo "Response: $TEST_RESPONSE"
-        return 1
-    fi
-}
+install_cloudflared() {
+    log "📦 Installing cloudflared..."
 
-while true; do
-    read -p "Choose authentication method (1-3): " auth_choice
-    case $auth_choice in
-        1)
-            if create_api_token_automatically; then
-                log "✅ Automatic API setup completed!"
-                break
-            else
-                error "Automatic API setup failed, please try another method"
-                continue
-            fi
+    # Detect architecture
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)
+            CLOUDFLARED_ARCH="amd64"
             ;;
-        2)
-            echo ""
-            echo "🔑 MANUAL API TOKEN SETUP:"
-            echo ""
-            echo "📋 REQUIRED PERMISSIONS:"
-            echo "   • Zone:Zone:Read"
-            echo "   • Zone:DNS:Edit"
-            echo "   • Cloudflare Tunnel:Edit"
-            echo ""
-            echo "🔗 Create token at: https://dash.cloudflare.com/profile/api-tokens"
-            echo ""
-            echo -n "Enter your Cloudflare API Token: "
-            read -s CF_API_TOKEN
-            echo ""
-            
-            if [[ -z "$CF_API_TOKEN" ]]; then
-                error "API Token is required"
-                continue
-            fi
-            
-            if authenticate_with_api_token "$CF_API_TOKEN"; then
-                break
-            else
-                continue
-            fi
+        aarch64|arm64)
+            CLOUDFLARED_ARCH="arm64"
             ;;
-        3)
-            log "🌐 Opening browser for Cloudflare login..."
-            echo ""
-            echo "📋 INSTRUCTIONS:"
-            echo "   1. Browser will open to Cloudflare login"
-            echo "   2. Log in to your Cloudflare account"
-            echo "   3. Authorize cloudflared access"
-            echo "   4. Return to this terminal when done"
-            echo ""
-            read -p "Press ENTER to open browser..."
-            
-            if cloudflared tunnel login; then
-                log "✅ Authentication successful!"
-                break
-            else
-                error "Authentication failed"
-                continue
-            fi
+        armv7l|armv6l)
+            CLOUDFLARED_ARCH="arm"
             ;;
         *)
-            echo "❌ Please enter 1, 2, or 3"
+            error "Unsupported architecture: $ARCH"
+            exit 1
             ;;
     esac
-done
 
-# Create tunnel
-echo ""
-log "🚇 Creating Cloudflare Tunnel..."
+    # Download and install cloudflared
+    CLOUDFLARED_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$CLOUDFLARED_ARCH"
+    log "Downloading cloudflared for $ARCH..."
 
-# Use consistent tunnel name (defined earlier in script)
-log "Tunnel name: $TUNNEL_NAME"
+    curl -L --output /tmp/cloudflared "$CLOUDFLARED_URL"
+    sudo mv /tmp/cloudflared /usr/local/bin/
+    sudo chmod +x /usr/local/bin/cloudflared
 
-# Check if tunnel already exists
-log "🔍 Checking for existing tunnel..."
-EXISTING_TUNNEL_ID=$(cloudflared tunnel list 2>/dev/null | grep "$TUNNEL_NAME" | awk '{print $1}' | head -1)
-
-if [[ -n "$EXISTING_TUNNEL_ID" ]]; then
-    log "✅ Found existing tunnel: $TUNNEL_NAME (ID: $EXISTING_TUNNEL_ID)"
-    TUNNEL_ID="$EXISTING_TUNNEL_ID"
-
-    # Check if credentials file exists
-    TUNNEL_CREDS="$HOME/.cloudflared/$TUNNEL_ID.json"
-    if [[ ! -f "$TUNNEL_CREDS" ]]; then
-        warn "Tunnel exists but credentials file missing. You may need to re-authenticate."
-        warn "Try: cloudflared tunnel login"
-    fi
-else
-    log "🔧 No existing tunnel found, creating new one..."
-
-# Function to create tunnel via API (more reliable)
-create_tunnel_via_api() {
-    if [[ -n "$CLOUDFLARE_API_TOKEN" ]]; then
-        log "🔧 Creating tunnel via Cloudflare API..."
-        
-        # Get account ID first
-        ACCOUNT_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts" \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json")
-        
-        ACCOUNT_ID=$(echo "$ACCOUNT_RESPONSE" | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4)
-        
-        if [[ -z "$ACCOUNT_ID" ]]; then
-            warn "Could not get account ID via API, falling back to cloudflared"
-            return 1
-        fi
-        
-        log "Account ID: $ACCOUNT_ID"
-        
-        # Create tunnel via API
-        TUNNEL_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data '{
-                "name": "'"$TUNNEL_NAME"'",
-                "tunnel_secret": "'"$(openssl rand -base64 32)"'"
-            }')
-        
-        if echo "$TUNNEL_RESPONSE" | grep -q '"success":true'; then
-            TUNNEL_ID=$(echo "$TUNNEL_RESPONSE" | grep -o '"id":"[^"]*' | cut -d'"' -f4)
-            TUNNEL_SECRET=$(echo "$TUNNEL_RESPONSE" | grep -o '"tunnel_secret":"[^"]*' | cut -d'"' -f4)
-            
-            log "✅ Tunnel created via API!"
-            log "Tunnel ID: $TUNNEL_ID"
-            
-            # Create credentials file
-            mkdir -p ~/.cloudflared
-            cat > ~/.cloudflared/$TUNNEL_ID.json <<EOF
-{
-    "AccountTag": "$ACCOUNT_ID",
-    "TunnelSecret": "$TUNNEL_SECRET",
-    "TunnelID": "$TUNNEL_ID"
+    log "✅ cloudflared installed successfully"
 }
-EOF
-            chmod 600 ~/.cloudflared/$TUNNEL_ID.json
-            
-            return 0
-        else
-            warn "API tunnel creation failed, falling back to cloudflared"
-            echo "Response: $TUNNEL_RESPONSE"
-            return 1
+
+cleanup_old_tunnel() {
+    log "🧹 Cleaning up existing tunnel configuration..."
+
+    # Stop service if running
+    if systemctl is-active --quiet $SERVICE_NAME 2>/dev/null; then
+        log "Stopping cloudflared service..."
+        sudo systemctl stop $SERVICE_NAME 2>/dev/null || true
+    fi
+
+    # Disable service
+    if systemctl is-enabled --quiet $SERVICE_NAME 2>/dev/null; then
+        log "Disabling cloudflared service..."
+        sudo systemctl disable $SERVICE_NAME 2>/dev/null || true
+    fi
+
+    # Remove systemd service file
+    if [[ -f "/etc/systemd/system/$SERVICE_NAME.service" ]]; then
+        log "Removing systemd service file..."
+        sudo rm -f "/etc/systemd/system/$SERVICE_NAME.service"
+        sudo systemctl daemon-reload
+    fi
+
+    # Remove configuration directory
+    if [[ -d "$CONFIG_DIR" ]]; then
+        log "Removing configuration directory..."
+        sudo rm -rf "$CONFIG_DIR"
+    fi
+
+    # Clean up user cloudflared directory
+    if [[ -d "$HOME/.cloudflared" ]]; then
+        log "Cleaning up user cloudflared directory..."
+        # Keep cert.pem for authentication, remove everything else
+        find "$HOME/.cloudflared" -type f ! -name "cert.pem" -delete 2>/dev/null || true
+    fi
+
+    # Delete tunnel if it exists
+    if command -v cloudflared >/dev/null 2>&1; then
+        log "Checking for existing tunnel..."
+        EXISTING_TUNNEL=$(cloudflared tunnel list 2>/dev/null | grep "$TUNNEL_NAME" | awk '{print $1}' | head -1) || true
+
+        if [[ -n "$EXISTING_TUNNEL" ]]; then
+            log "Deleting existing tunnel: $EXISTING_TUNNEL"
+            cloudflared tunnel delete "$EXISTING_TUNNEL" --force 2>/dev/null || warn "Could not delete tunnel automatically"
         fi
+    fi
+
+    log "✅ Cleanup completed"
+}
+
+complete_cleanup() {
+    log "🗑️ Performing complete tunnel cleanup..."
+
+    cleanup_old_tunnel
+
+    # Also remove cloudflared binary
+    if [[ -f "/usr/local/bin/cloudflared" ]]; then
+        log "Removing cloudflared binary..."
+        sudo rm -f "/usr/local/bin/cloudflared"
+    fi
+
+    # Remove entire user cloudflared directory
+    if [[ -d "$HOME/.cloudflared" ]]; then
+        log "Removing entire user cloudflared directory..."
+        rm -rf "$HOME/.cloudflared"
+    fi
+
+    # Remove log files
+    if [[ -f "/var/log/cloudflared.log" ]]; then
+        sudo rm -f "/var/log/cloudflared.log"
+    fi
+
+    log "✅ Complete cleanup finished"
+}
+
+get_domain_info() {
+    echo ""
+    header "🌐 DOMAIN CONFIGURATION"
+    echo "----------------------------------------"
+
+    while [[ -z "${DOMAIN:-}" ]]; do
+        echo -n "Enter your domain name (e.g., example.com): "
+        read DOMAIN
+        if [[ -z "$DOMAIN" ]]; then
+            warn "Domain name is required"
+        fi
+    done
+
+    echo -n "Enter subdomain for printer service (default: printer): "
+    read SUBDOMAIN
+    if [[ -z "$SUBDOMAIN" ]]; then
+        SUBDOMAIN="printer"
+    fi
+
+    FULL_DOMAIN="$SUBDOMAIN.$DOMAIN"
+
+    echo ""
+    log "Configuration:"
+    log "  Domain: $DOMAIN"
+    log "  Subdomain: $SUBDOMAIN"
+    log "  Full Domain: $FULL_DOMAIN"
+    log "  Webhook URL: https://$FULL_DOMAIN/webhook/orders"
+    echo ""
+}
+
+browser_authentication() {
+    echo ""
+    header "🔐 CLOUDFLARE AUTHENTICATION"
+    echo "----------------------------------------"
+    echo ""
+    echo "This will open your browser to authenticate with Cloudflare."
+    echo ""
+    echo "📋 INSTRUCTIONS:"
+    echo "   1. Browser will open to Cloudflare login"
+    echo "   2. Log in to your Cloudflare account"
+    echo "   3. Authorize cloudflared access"
+    echo "   4. Return to this terminal when done"
+    echo ""
+
+    read -p "Press ENTER to open browser for authentication..."
+    echo ""
+
+    if cloudflared tunnel login; then
+        log "✅ Authentication successful!"
+        return 0
     else
+        error "Authentication failed"
         return 1
     fi
 }
 
-# Try API first, fallback to cloudflared
-if ! create_tunnel_via_api; then
-    log "🔧 Creating tunnel via cloudflared..."
-    if cloudflared tunnel create "$TUNNEL_NAME"; then
-        log "✅ Tunnel created successfully"
-        
-        # Get tunnel ID
-        TUNNEL_ID=$(cloudflared tunnel list | grep "$TUNNEL_NAME" | awk '{print $1}')
-        if [[ -z "$TUNNEL_ID" ]]; then
-            error "Could not find tunnel ID"
-            exit 1
-        fi
-        log "Tunnel ID: $TUNNEL_ID"
+create_tunnel() {
+    log "🚇 Creating Cloudflare Tunnel..."
+
+    # Check if tunnel already exists
+    EXISTING_TUNNEL=$(cloudflared tunnel list 2>/dev/null | grep "$TUNNEL_NAME" | awk '{print $1}' | head -1) || true
+
+    if [[ -n "$EXISTING_TUNNEL" ]]; then
+        log "✅ Found existing tunnel: $TUNNEL_NAME (ID: $EXISTING_TUNNEL)"
+        TUNNEL_ID="$EXISTING_TUNNEL"
     else
-        error "Failed to create tunnel"
-        exit 1
-    fi
-fi
-fi
-
-# Create DNS record
-log "🌐 Creating DNS record..."
-
-# Function to create DNS record via API
-create_dns_via_api() {
-    if [[ -n "$CLOUDFLARE_API_TOKEN" ]]; then
-        log "🔧 Creating DNS record via Cloudflare API..."
-        
-        # Get zone ID
-        ZONE_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=$DOMAIN" \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json")
-        
-        ZONE_ID=$(echo "$ZONE_RESPONSE" | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4)
-        
-        if [[ -z "$ZONE_ID" ]]; then
-            warn "Could not get zone ID via API, falling back to cloudflared"
-            return 1
-        fi
-        
-        log "Zone ID: $ZONE_ID"
-        
-        # Create CNAME record pointing to tunnel
-        DNS_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data '{
-                "type": "CNAME",
-                "name": "'"$SUBDOMAIN"'",
-                "content": "'"$TUNNEL_ID"'.cfargotunnel.com",
-                "ttl": 1,
-                "proxied": true
-            }')
-        
-        if echo "$DNS_RESPONSE" | grep -q '"success":true'; then
-            log "✅ DNS record created via API: $FULL_DOMAIN"
-            return 0
-        elif echo "$DNS_RESPONSE" | grep -q '"code":81053'; then
-            log "ℹ️  DNS record already exists for $FULL_DOMAIN"
-            return 0
+        log "Creating new tunnel: $TUNNEL_NAME"
+        if cloudflared tunnel create "$TUNNEL_NAME"; then
+            TUNNEL_ID=$(cloudflared tunnel list | grep "$TUNNEL_NAME" | awk '{print $1}')
+            if [[ -z "$TUNNEL_ID" ]]; then
+                error "Could not find tunnel ID after creation"
+                return 1
+            fi
+            log "✅ Tunnel created successfully (ID: $TUNNEL_ID)"
         else
-            warn "API DNS creation failed, falling back to cloudflared"
-            echo "Response: $DNS_RESPONSE"
+            error "Failed to create tunnel"
             return 1
         fi
-    else
-        return 1
     fi
 }
 
-# Try API first, fallback to cloudflared
-if ! create_dns_via_api; then
-    log "🔧 Creating DNS record via cloudflared..."
+create_dns_record() {
+    log "🌐 Creating DNS record..."
+
     if cloudflared tunnel route dns "$TUNNEL_ID" "$FULL_DOMAIN"; then
         log "✅ DNS record created: $FULL_DOMAIN"
+        return 0
     else
         error "Failed to create DNS record"
-        exit 1
+        return 1
     fi
-fi
+}
 
-# Create tunnel configuration
-log "⚙️ Creating tunnel configuration..."
+create_tunnel_config() {
+    log "⚙️ Creating tunnel configuration..."
 
-TUNNEL_CONFIG_DIR="/etc/cloudflared"
-sudo mkdir -p "$TUNNEL_CONFIG_DIR"
+    sudo mkdir -p "$CONFIG_DIR"
 
-sudo tee "$TUNNEL_CONFIG_DIR/config.yml" > /dev/null <<EOF
+    sudo tee "$CONFIG_DIR/config.yml" > /dev/null <<EOF
 tunnel: $TUNNEL_ID
-credentials-file: /etc/cloudflared/$TUNNEL_ID.json
+credentials-file: $CONFIG_DIR/$TUNNEL_ID.json
 
 ingress:
-  # Webhook endpoint with special handling
+  # Webhook endpoints with optimized settings
   - hostname: $FULL_DOMAIN
     path: /webhook/*
-    service: http://localhost:8000
-    originRequest:
-      httpHostHeader: $FULL_DOMAIN
-      connectTimeout: 10s
-      tlsTimeout: 10s
-      tcpKeepAlive: 30s
-      keepAliveTimeout: 90s
-      keepAliveConnections: 10
-  
-  # Health check endpoint
-  - hostname: $FULL_DOMAIN
-    path: /health
-    service: http://localhost:8000
-    originRequest:
-      httpHostHeader: $FULL_DOMAIN
-  
-  # API documentation
-  - hostname: $FULL_DOMAIN
-    path: /docs
-    service: http://localhost:8000
-    originRequest:
-      httpHostHeader: $FULL_DOMAIN
-  
-  # All other endpoints
-  - hostname: $FULL_DOMAIN
-    service: http://localhost:8000
+    service: http://localhost:$SERVICE_PORT
     originRequest:
       httpHostHeader: $FULL_DOMAIN
       connectTimeout: 30s
@@ -749,276 +284,784 @@ ingress:
       tcpKeepAlive: 30s
       keepAliveTimeout: 90s
       keepAliveConnections: 10
-  
+
+  # Health check endpoint
+  - hostname: $FULL_DOMAIN
+    path: /health*
+    service: http://localhost:$SERVICE_PORT
+    originRequest:
+      httpHostHeader: $FULL_DOMAIN
+      connectTimeout: 10s
+
+  # API documentation
+  - hostname: $FULL_DOMAIN
+    path: /docs*
+    service: http://localhost:$SERVICE_PORT
+    originRequest:
+      httpHostHeader: $FULL_DOMAIN
+
+  # Admin interface
+  - hostname: $FULL_DOMAIN
+    path: /admin*
+    service: http://localhost:$SERVICE_PORT
+    originRequest:
+      httpHostHeader: $FULL_DOMAIN
+
+  # All other endpoints
+  - hostname: $FULL_DOMAIN
+    service: http://localhost:$SERVICE_PORT
+    originRequest:
+      httpHostHeader: $FULL_DOMAIN
+      connectTimeout: 30s
+      tlsTimeout: 10s
+      tcpKeepAlive: 30s
+      keepAliveTimeout: 90s
+      keepAliveConnections: 10
+
   # Catch-all rule (required)
   - service: http_status:404
 
-# Logging
+# Logging configuration
 loglevel: info
 logfile: /var/log/cloudflared.log
 
-# Metrics
+# Metrics endpoint for monitoring
 metrics: localhost:8080
+
+# Auto-update settings
+autoupdate-freq: 24h
 EOF
 
-# Copy tunnel credentials
-TUNNEL_CREDS="$HOME/.cloudflared/$TUNNEL_ID.json"
-if [[ -f "$TUNNEL_CREDS" ]]; then
-    sudo cp "$TUNNEL_CREDS" "$TUNNEL_CONFIG_DIR/"
-    log "✅ Tunnel credentials configured"
-else
-    error "Tunnel credentials not found at $TUNNEL_CREDS"
-    exit 1
-fi
+    # Copy credentials to system location
+    TUNNEL_CREDS="$HOME/.cloudflared/$TUNNEL_ID.json"
+    if [[ -f "$TUNNEL_CREDS" ]]; then
+        sudo cp "$TUNNEL_CREDS" "$CONFIG_DIR/"
+        sudo chmod 600 "$CONFIG_DIR/$TUNNEL_ID.json"
+        log "✅ Tunnel configuration created"
+        return 0
+    else
+        error "Tunnel credentials not found at $TUNNEL_CREDS"
+        return 1
+    fi
+}
 
-# Create systemd service
-log "🔧 Creating systemd service..."
+create_systemd_service() {
+    log "🔧 Creating systemd service..."
 
-sudo tee /etc/systemd/system/cloudflared.service > /dev/null <<EOF
+    sudo tee "/etc/systemd/system/$SERVICE_NAME.service" > /dev/null <<EOF
 [Unit]
-Description=Cloudflare Tunnel
-After=network.target
+Description=Cloudflare Tunnel for Wix POS Printer
+After=network.target network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/local/bin/cloudflared tunnel --config /etc/cloudflared/config.yml run
+Group=root
+ExecStart=/usr/local/bin/cloudflared tunnel --config $CONFIG_DIR/config.yml run
+ExecReload=/bin/kill -USR1 \$MAINPID
 Restart=on-failure
-RestartSec=5s
+RestartSec=10s
+TimeoutStopSec=30s
+KillMode=mixed
+
+# Security settings
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log
+PrivateTmp=true
+
+# Environment
+Environment=TUNNEL_ORIGIN_CERT=$HOME/.cloudflared/cert.pem
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Enhanced service management with validation
-log "🔧 Configuring and starting Cloudflare tunnel service..."
+    # Reload systemd and enable service
+    sudo systemctl daemon-reload
+    sudo systemctl enable $SERVICE_NAME
 
-# Function to cleanup old credentials
-cleanup_old_tunnel_credentials() {
-    log "🧹 Cleaning up old tunnel credentials..."
-
-    # Stop service if running
-    if systemctl is-active --quiet cloudflared 2>/dev/null; then
-        log "Stopping cloudflared service..."
-        sudo systemctl stop cloudflared 2>/dev/null || true
-    fi
-
-    # Clean up old credentials
-    if [[ -f ~/.cloudflared/cert.pem ]]; then
-        log "Removing old cloudflared certificate..."
-        rm -f ~/.cloudflared/cert.pem
-    fi
-
-    if [[ -f ~/.cloudflared/token ]]; then
-        rm -f ~/.cloudflared/token
-    fi
-
-    # Remove old credential files except the current one
-    for old_cred in ~/.cloudflared/*.json; do
-        if [[ -f "$old_cred" && "$old_cred" != *"$TUNNEL_ID.json" ]]; then
-            rm -f "$old_cred"
-            log "Removed old user credential: $(basename "$old_cred")"
-        fi
-    done
-
-    for old_cred in /etc/cloudflared/*.json; do
-        if [[ -f "$old_cred" && "$old_cred" != *"$TUNNEL_ID.json" ]]; then
-            sudo rm -f "$old_cred"
-            log "Removed old system credential: $(basename "$old_cred")"
-        fi
-    done
-
-    log "✅ Credential cleanup completed"
+    log "✅ Systemd service created and enabled"
 }
 
-# Function to validate service startup
-validate_service_startup() {
-    log "🔍 Validating service startup..."
+start_and_validate_service() {
+    log "🚀 Starting cloudflared service..."
 
-    # Start the service
-    sudo systemctl start cloudflared
+    if sudo systemctl start $SERVICE_NAME; then
+        log "Service start command executed"
+    else
+        error "Failed to start service"
+        return 1
+    fi
 
-    # Wait a moment for startup
+    # Wait for service to start
     sleep 5
 
-    # Check if service is active
-    if systemctl is-active --quiet cloudflared; then
-        log "✅ Cloudflared service started successfully"
+    # Check if service is running
+    if systemctl is-active --quiet $SERVICE_NAME; then
+        log "✅ Cloudflared service is running"
 
-        # Check for authentication errors in recent logs
-        if sudo journalctl -u cloudflared --since "1 minute ago" --no-pager | grep -q "Invalid tunnel secret"; then
-            error "Service started but has authentication errors"
-            log "🔧 Restarting service to apply fresh credentials..."
-
-            sudo systemctl restart cloudflared
-            sleep 5
-
-            if sudo journalctl -u cloudflared --since "30 seconds ago" --no-pager | grep -q "Invalid tunnel secret"; then
-                error "Persistent authentication errors detected"
-                log "📋 Recent service logs:"
-                sudo journalctl -u cloudflared --since "1 minute ago" --no-pager -n 10
-                return 1
-            else
-                log "✅ Service restart resolved authentication issues"
-            fi
-        fi
+        # Wait for tunnel to establish
+        log "⏳ Waiting for tunnel to establish connection..."
+        sleep 10
 
         return 0
     else
-        error "Failed to start cloudflared service"
-        log "📋 Service status:"
-        sudo systemctl status cloudflared --no-pager -l
+        error "Service failed to start properly"
+        log "Service status:"
+        sudo systemctl status $SERVICE_NAME --no-pager -l
         return 1
     fi
 }
 
-# Perform credential cleanup
-cleanup_old_tunnel_credentials
+test_tunnel_connectivity() {
+    log "🧪 Testing tunnel connectivity..."
 
-# Reload systemd daemon and enable service
-sudo systemctl daemon-reload
-sudo systemctl enable cloudflared
-
-# Validate and start service
-if validate_service_startup; then
-    log "✅ Cloudflared service is running properly"
-else
-    warn "Service startup validation failed, but continuing..."
-fi
-
-# Wait for tunnel to be ready
-log "⏳ Waiting for tunnel to be ready..."
-sleep 10
-
-# Test tunnel connectivity
-log "🧪 Testing tunnel connectivity..."
-
-if curl -s -f -m 10 "https://$FULL_DOMAIN/health" >/dev/null 2>&1; then
-    log "✅ Tunnel is working correctly!"
-else
-    warn "Tunnel test failed - this might be normal if the service isn't running yet"
-fi
-
-# Update environment configuration
-log "⚙️ Updating service configuration..."
-
-ENV_FILE="/opt/wix-printer-service/.env"
-if [[ -f "$ENV_FILE" ]]; then
-    # Add or update PUBLIC_DOMAIN
-    if grep -q "PUBLIC_DOMAIN=" "$ENV_FILE"; then
-        sudo sed -i "s/PUBLIC_DOMAIN=.*/PUBLIC_DOMAIN=$FULL_DOMAIN/" "$ENV_FILE"
+    # Test health endpoint
+    if curl -s -f -m 15 "https://$FULL_DOMAIN/health" >/dev/null 2>&1; then
+        log "✅ Tunnel is working correctly!"
+        return 0
     else
-        echo "PUBLIC_DOMAIN=$FULL_DOMAIN" | sudo tee -a "$ENV_FILE" >/dev/null
+        warn "Tunnel connectivity test failed"
+        log "This might be normal if the service isn't running yet"
+        log "You can test manually later with: curl https://$FULL_DOMAIN/health"
+        return 1
     fi
-    log "✅ Environment configuration updated"
-fi
-
-# Create monitoring script
-log "📊 Creating monitoring script..."
-
-sudo tee /usr/local/bin/check-cloudflare-tunnel.sh > /dev/null <<EOF
-#!/bin/bash
-
-DOMAIN="$FULL_DOMAIN"
-LOG_FILE="/var/log/cloudflare-tunnel-health.log"
-
-# Create log directory if it doesn't exist
-mkdir -p /var/log
-
-# Function to log with timestamp
-log_with_timestamp() {
-    echo "\$(date +'%Y-%m-%d %H:%M:%S') - \$1" >> \$LOG_FILE
 }
 
-# Check tunnel status
-if systemctl is-active --quiet cloudflared; then
-    TUNNEL_STATUS="running"
-else
-    TUNNEL_STATUS="stopped"
-    log_with_timestamp "ERROR: Cloudflare tunnel service is not running"
+update_service_config() {
+    log "⚙️ Updating service configuration..."
+
+    # Update .env file if it exists
+    ENV_FILE="/opt/wix-printer-service/.env"
+    if [[ -f "$ENV_FILE" ]]; then
+        if grep -q "PUBLIC_DOMAIN=" "$ENV_FILE"; then
+            sudo sed -i "s/PUBLIC_DOMAIN=.*/PUBLIC_DOMAIN=$FULL_DOMAIN/" "$ENV_FILE"
+        else
+            echo "PUBLIC_DOMAIN=$FULL_DOMAIN" | sudo tee -a "$ENV_FILE" >/dev/null
+        fi
+        log "✅ Environment configuration updated"
+    else
+        warn "Service .env file not found at $ENV_FILE"
+    fi
+
+    # Also try current directory
+    if [[ -f ".env" ]]; then
+        if grep -q "PUBLIC_DOMAIN=" ".env"; then
+            sed -i "s/PUBLIC_DOMAIN=.*/PUBLIC_DOMAIN=$FULL_DOMAIN/" ".env"
+        else
+            echo "PUBLIC_DOMAIN=$FULL_DOMAIN" >> ".env"
+        fi
+        log "✅ Local .env file updated"
+    fi
+}
+
+show_summary() {
+    echo ""
+    header "🎉 CLOUDFLARE TUNNEL SETUP COMPLETE!"
+    header "====================================="
+    echo ""
+    header "✅ CONFIGURATION SUMMARY:"
+    echo "   • Tunnel Name: $TUNNEL_NAME"
+    echo "   • Tunnel ID: $TUNNEL_ID"
+    echo "   • Public URL: https://$FULL_DOMAIN"
+    echo "   • Webhook URL: https://$FULL_DOMAIN/webhook/orders"
+    echo ""
+    header "🔧 MANAGEMENT COMMANDS:"
+    echo "   • Check status: sudo systemctl status $SERVICE_NAME"
+    echo "   • View logs: sudo journalctl -u $SERVICE_NAME -f"
+    echo "   • Restart: sudo systemctl restart $SERVICE_NAME"
+    echo "   • Test URL: curl https://$FULL_DOMAIN/health"
+    echo ""
+    header "📊 MONITORING:"
+    echo "   • Service logs: /var/log/cloudflared.log"
+    echo "   • Metrics: http://localhost:8080/metrics"
+    echo ""
+    header "🌐 WIX WEBHOOK CONFIGURATION:"
+    echo "   Configure your Wix webhook URL as:"
+    echo "   👉 https://$FULL_DOMAIN/webhook/orders"
+    echo ""
+    header "✅ Your printer service is now accessible from anywhere!"
+    header "   No router configuration or static IP needed!"
+    echo ""
+}
+
+show_status() {
+    clear
+    header "📊 CLOUDFLARE TUNNEL STATUS"
+    header "============================"
+    echo ""
+
+    # Check if cloudflared is installed
+    if ! command -v cloudflared >/dev/null 2>&1; then
+        error "cloudflared is not installed"
+        return
+    fi
+
+    # Check service status
+    echo "🔧 Service Status:"
+    if systemctl is-active --quiet $SERVICE_NAME 2>/dev/null; then
+        echo "   Status: ${GREEN}Running${NC}"
+        echo "   Uptime: $(systemctl show -p ActiveEnterTimestamp $SERVICE_NAME --value | cut -d' ' -f2-3)"
+    else
+        echo "   Status: ${RED}Stopped${NC}"
+    fi
+
+    echo ""
+    echo "📋 Configuration:"
+    if [[ -f "$CONFIG_DIR/config.yml" ]]; then
+        TUNNEL_ID=$(grep "^tunnel:" "$CONFIG_DIR/config.yml" | cut -d' ' -f2)
+        HOSTNAME=$(grep -A 20 "ingress:" "$CONFIG_DIR/config.yml" | grep "hostname:" | head -1 | awk '{print $3}')
+        echo "   Tunnel ID: $TUNNEL_ID"
+        echo "   Hostname: $HOSTNAME"
+        echo "   Config: $CONFIG_DIR/config.yml"
+    else
+        echo "   ${RED}No configuration found${NC}"
+    fi
+
+    echo ""
+    echo "🌐 Tunnel List:"
+    cloudflared tunnel list 2>/dev/null || echo "   Could not retrieve tunnel list"
+
+    echo ""
+    read -p "Press ENTER to continue..."
+}
+
+test_tunnel() {
+    clear
+    header "🧪 TUNNEL CONNECTIVITY TEST"
+    header "=========================="
+    echo ""
+
+    if [[ ! -f "$CONFIG_DIR/config.yml" ]]; then
+        error "No tunnel configuration found"
+        read -p "Press ENTER to continue..."
+        return
+    fi
+
+    HOSTNAME=$(grep -A 20 "ingress:" "$CONFIG_DIR/config.yml" | grep "hostname:" | head -1 | awk '{print $3}')
+
+    if [[ -z "$HOSTNAME" ]]; then
+        error "Could not determine hostname from configuration"
+        read -p "Press ENTER to continue..."
+        return
+    fi
+
+    log "Testing tunnel connectivity for: $HOSTNAME"
+    echo ""
+
+    # Test health endpoint
+    echo "🏥 Testing health endpoint..."
+    if curl -s -f -m 10 -w "Response time: %{time_total}s\n" "https://$HOSTNAME/health"; then
+        log "✅ Health endpoint: OK"
+    else
+        error "❌ Health endpoint: FAILED"
+    fi
+
+    echo ""
+
+    # Test webhook endpoint (expect failure due to validation)
+    echo "🎣 Testing webhook endpoint..."
+    if curl -s -f -m 10 -X POST "https://$HOSTNAME/webhook/orders" \
+        -H "Content-Type: application/json" \
+        -d '{"test": true}' 2>/dev/null; then
+        log "✅ Webhook endpoint: Accessible"
+    else
+        warn "⚠️  Webhook endpoint: Protected (expected)"
+    fi
+
+    echo ""
+
+    # Test docs endpoint
+    echo "📚 Testing docs endpoint..."
+    if curl -s -f -m 10 "https://$HOSTNAME/docs" >/dev/null 2>&1; then
+        log "✅ Docs endpoint: OK"
+    else
+        warn "⚠️  Docs endpoint: Not accessible"
+    fi
+
+    echo ""
+    read -p "Press ENTER to continue..."
+}
+
+show_logs() {
+    clear
+    header "📜 CLOUDFLARE TUNNEL LOGS"
+    header "========================"
+    echo ""
+    echo "Showing last 50 log entries (Press Ctrl+C to exit)"
+    echo ""
+
+    sudo journalctl -u $SERVICE_NAME -n 50 -f
+}
+
+setup_new_tunnel() {
+    log "🚀 Starting new tunnel setup..."
+
+    # Check if cloudflared is installed
+    if ! command -v cloudflared >/dev/null 2>&1; then
+        install_cloudflared
+    else
+        log "✅ cloudflared is already installed"
+    fi
+
+    # Get domain configuration
+    get_domain_info
+
+    # Clean up any existing configuration
+    cleanup_old_tunnel
+
+    # Browser authentication
+    if ! browser_authentication; then
+        error "Authentication failed. Please try again."
+        read -p "Press ENTER to continue..."
+        return 1
+    fi
+
+    # Create tunnel
+    if ! create_tunnel; then
+        error "Tunnel creation failed"
+        read -p "Press ENTER to continue..."
+        return 1
+    fi
+
+    # Create DNS record
+    if ! create_dns_record; then
+        error "DNS record creation failed"
+        read -p "Press ENTER to continue..."
+        return 1
+    fi
+
+    # Create configuration
+    if ! create_tunnel_config; then
+        error "Configuration creation failed"
+        read -p "Press ENTER to continue..."
+        return 1
+    fi
+
+    # Create systemd service
+    if ! create_systemd_service; then
+        error "Service creation failed"
+        read -p "Press ENTER to continue..."
+        return 1
+    fi
+
+    # Start and validate service
+    if ! start_and_validate_service; then
+        error "Service startup failed"
+        read -p "Press ENTER to continue..."
+        return 1
+    fi
+
+    # Update service configuration
+    update_service_config
+
+    # Test connectivity
+    test_tunnel_connectivity
+
+    # Show summary
+    show_summary
+
+    read -p "Press ENTER to continue..."
+}
+
+update_tunnel() {
+    log "🔄 Updating tunnel configuration..."
+
+    # Check if tunnel exists
+    if [[ ! -f "$CONFIG_DIR/config.yml" ]]; then
+        error "No existing tunnel configuration found"
+        error "Please run 'New Tunnel Setup' first"
+        read -p "Press ENTER to continue..."
+        return 1
+    fi
+
+    # Get domain info (may be different)
+    get_domain_info
+
+    # Get current tunnel ID
+    TUNNEL_ID=$(grep "^tunnel:" "$CONFIG_DIR/config.yml" | cut -d' ' -f2)
+
+    log "Updating configuration for tunnel: $TUNNEL_ID"
+
+    # Update DNS record
+    create_dns_record
+
+    # Recreate configuration
+    create_tunnel_config
+
+    # Restart service
+    log "Restarting service with new configuration..."
+    sudo systemctl restart $SERVICE_NAME
+
+    # Validate
+    start_and_validate_service
+
+    # Update service config
+    update_service_config
+
+    # Test
+    test_tunnel_connectivity
+
+    log "✅ Tunnel update completed"
+    read -p "Press ENTER to continue..."
+}
+
+reset_tunnel() {
+    warn "🧹 This will completely reset the tunnel configuration"
+    warn "All current settings will be lost!"
+    echo ""
+    read -p "Are you sure you want to continue? (y/N): " -r
+    echo ""
+
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log "Reset cancelled"
+        read -p "Press ENTER to continue..."
+        return
+    fi
+
+    complete_cleanup
+
+    log "✅ Tunnel reset completed"
+    log "You can now run 'New Tunnel Setup' to configure a fresh tunnel"
+    read -p "Press ENTER to continue..."
+}
+
+# API Token functions for DNS management
+validate_api_token() {
+    local token="$1"
+
+    if [[ -z "$token" ]]; then
+        return 1
+    fi
+
+    # Test the token
+    local test_response
+    test_response=$(curl -s -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json")
+
+    if echo "$test_response" | grep -q '"success":true'; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+get_zone_id() {
+    local domain="$1"
+    local token="$2"
+
+    local zone_response
+    zone_response=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=$domain" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json")
+
+    echo "$zone_response" | python3 - <<'PY'
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+    if data.get('success') and data.get('result'):
+        zone = data['result'][0]
+        zone_id = zone.get('id', '')
+        print(zone_id)
+except Exception:
+    pass
+PY
+}
+
+list_tunnel_dns_records() {
+    local domain="$1"
+    local token="$2"
+
+    local zone_id
+    zone_id=$(get_zone_id "$domain" "$token")
+
+    if [[ -z "$zone_id" ]]; then
+        error "Could not get zone ID for domain: $domain"
+        return 1
+    fi
+
+    log "Zone ID: $zone_id"
+
+    local dns_response
+    dns_response=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json")
+
+    echo "$dns_response" | python3 - <<'PY'
+import json
+import sys
+
+tunnel_keywords = ['printer', 'wix', 'pos', 'tunnel']
+
+try:
+    data = json.load(sys.stdin)
+    if data.get('success'):
+        records = data.get('result', [])
+        tunnel_records = []
+
+        for record in records:
+            name = record.get('name', '').lower()
+            content = record.get('content', '').lower()
+            record_type = record.get('type', '')
+
+            # Look for tunnel-related records
+            is_tunnel_record = False
+
+            # Check if it's a CNAME pointing to cfargotunnel.com
+            if record_type == 'CNAME' and 'cfargotunnel.com' in content:
+                is_tunnel_record = True
+
+            # Check for tunnel-related keywords in name
+            for keyword in tunnel_keywords:
+                if keyword in name:
+                    is_tunnel_record = True
+                    break
+
+            if is_tunnel_record:
+                tunnel_records.append({
+                    'id': record.get('id'),
+                    'name': record.get('name'),
+                    'type': record.get('type'),
+                    'content': record.get('content'),
+                    'ttl': record.get('ttl')
+                })
+
+        for record in tunnel_records:
+            record_id = record['id']
+            record_name = record['name']
+            record_type = record['type']
+            record_content = record['content']
+            record_ttl = record['ttl']
+            print(f"{record_id}|{record_name}|{record_type}|{record_content}|{record_ttl}")
+
+except Exception as e:
+    pass
+PY
+}
+
+delete_dns_record() {
+    local record_id="$1"
+    local zone_id="$2"
+    local token="$3"
+
+    local delete_response
+    delete_response=$(curl -s -X DELETE "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records/$record_id" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json")
+
+    if echo "$delete_response" | grep -q '"success":true'; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+dns_cleanup_menu() {
+    clear
+    header "🗑️ DNS-RECORDS BEREINIGEN"
+    header "=========================="
+    echo ""
+    echo "Diese Funktion bereinigt tunnel-bezogene DNS-Records in Cloudflare."
+    echo "Benötigt einen API-Token mit Zone:DNS:Edit Berechtigung."
+    echo ""
+    header "📋 API-TOKEN ERSTELLEN:"
+    echo "   1. Gehe zu https://dash.cloudflare.com/profile/api-tokens"
+    echo "   2. Klicke 'Create Token'"
+    echo "   3. Wähle 'Custom Token'"
+    echo "   4. Berechtigungen: Zone:Zone:Read, Zone:DNS:Edit"
+    echo "   5. Zone Resources: Include → Specific zone → deine-domain.com"
+    echo ""
+
+    echo -n "Enter your domain name (e.g., example.com): "
+    read CLEANUP_DOMAIN
+
+    if [[ -z "$CLEANUP_DOMAIN" ]]; then
+        error "Domain name is required"
+        read -p "Press ENTER to continue..."
+        return
+    fi
+
+    echo -n "Enter your Cloudflare API Token: "
+    read -s CLEANUP_API_TOKEN
+    echo ""
+
+    if [[ -z "$CLEANUP_API_TOKEN" ]]; then
+        error "API Token is required"
+        read -p "Press ENTER to continue..."
+        return
+    fi
+
+    log "Validating API token..."
+    if ! validate_api_token "$CLEANUP_API_TOKEN"; then
+        error "Invalid API token or insufficient permissions"
+        read -p "Press ENTER to continue..."
+        return
+    fi
+
+    log "✅ API token is valid"
+
+    log "Searching for tunnel-related DNS records..."
+    local zone_id
+    zone_id=$(get_zone_id "$CLEANUP_DOMAIN" "$CLEANUP_API_TOKEN")
+
+    if [[ -z "$zone_id" ]]; then
+        error "Could not get zone ID for domain: $CLEANUP_DOMAIN"
+        read -p "Press ENTER to continue..."
+        return
+    fi
+
+    local records
+    records=$(list_tunnel_dns_records "$CLEANUP_DOMAIN" "$CLEANUP_API_TOKEN")
+
+    if [[ -z "$records" ]]; then
+        log "✅ No tunnel-related DNS records found"
+        read -p "Press ENTER to continue..."
+        return
+    fi
+
+    echo ""
+    header "🔍 GEFUNDENE TUNNEL-RECORDS:"
+    echo "-----------------------------"
+
+    declare -a record_ids
+    declare -a record_names
+    local counter=1
+
+    while IFS='|' read -r record_id record_name record_type record_content record_ttl; do
+        if [[ -n "$record_id" ]]; then
+            record_ids[counter]="$record_id"
+            record_names[counter]="$record_name"
+            printf "   %d) %s (%s) → %s\n" "$counter" "$record_name" "$record_type" "$record_content"
+            ((counter++))
+        fi
+    done <<< "$records"
+
+    if [[ $counter -eq 1 ]]; then
+        log "✅ No tunnel-related DNS records found"
+        read -p "Press ENTER to continue..."
+        return
+    fi
+
+    echo ""
+    echo "Optionen:"
+    echo "   ${BOLD}a)${NC} Alle Records löschen"
+    echo "   ${BOLD}s)${NC} Spezifische Records auswählen"
+    echo "   ${BOLD}c)${NC} Abbrechen"
+    echo ""
+
+    read -p "Wähle eine Option (a/s/c): " cleanup_choice
+
+    case $cleanup_choice in
+        a|A)
+            echo ""
+            warn "WARNUNG: Alle tunnel-bezogenen DNS-Records werden gelöscht!"
+            read -p "Sind Sie sicher? (y/N): " -r
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                log "Abgebrochen"
+                read -p "Press ENTER to continue..."
+                return
+            fi
+
+            log "Lösche alle gefundenen Records..."
+            for i in $(seq 1 $((counter-1))); do
+                if delete_dns_record "${record_ids[i]}" "$zone_id" "$CLEANUP_API_TOKEN"; then
+                    log "✅ Deleted: ${record_names[i]}"
+                else
+                    error "❌ Failed to delete: ${record_names[i]}"
+                fi
+            done
+            ;;
+
+        s|S)
+            echo ""
+            echo "Geben Sie die Nummern der zu löschenden Records ein (z.B. 1,3,5):"
+            read -p "Records: " selected_records
+
+            if [[ -z "$selected_records" ]]; then
+                log "Keine Records ausgewählt"
+                read -p "Press ENTER to continue..."
+                return
+            fi
+
+            IFS=',' read -ra ADDR <<< "$selected_records"
+            for num in "${ADDR[@]}"; do
+                num=$(echo "$num" | xargs)  # trim whitespace
+                if [[ "$num" =~ ^[0-9]+$ ]] && [[ $num -ge 1 ]] && [[ $num -lt $counter ]]; then
+                    if delete_dns_record "${record_ids[num]}" "$zone_id" "$CLEANUP_API_TOKEN"; then
+                        log "✅ Deleted: ${record_names[num]}"
+                    else
+                        error "❌ Failed to delete: ${record_names[num]}"
+                    fi
+                else
+                    warn "Invalid record number: $num"
+                fi
+            done
+            ;;
+
+        *)
+            log "Abgebrochen"
+            ;;
+    esac
+
+    echo ""
+    read -p "Press ENTER to continue..."
+}
+
+# Main menu loop
+main() {
+    while true; do
+        show_menu
+        read -p "Choose an option (0-7): " choice
+        echo ""
+
+        case $choice in
+            1)
+                setup_new_tunnel
+                ;;
+            2)
+                update_tunnel
+                ;;
+            3)
+                reset_tunnel
+                ;;
+            4)
+                show_status
+                ;;
+            5)
+                test_tunnel
+                ;;
+            6)
+                show_logs
+                ;;
+            7)
+                dns_cleanup_menu
+                ;;
+            0)
+                log "Exiting Cloudflare Tunnel Manager"
+                exit 0
+                ;;
+            *)
+                error "Invalid option. Please choose 0-7."
+                read -p "Press ENTER to continue..."
+                ;;
+        esac
+    done
+}
+
+# Check if script is run with sudo (warn but don't exit)
+if [[ $EUID -eq 0 ]]; then
+    warn "This script should not be run as root directly"
+    warn "It will use sudo when needed"
+    echo ""
 fi
 
-# Check public URL accessibility
-if curl -s -f -m 10 "https://\$DOMAIN/health" > /dev/null; then
-    URL_STATUS="accessible"
-    log_with_timestamp "SUCCESS: Public URL is accessible"
-else
-    URL_STATUS="failed"
-    log_with_timestamp "ERROR: Public URL is not accessible"
-fi
-
-# Output status
-echo "Tunnel Status: \$TUNNEL_STATUS"
-echo "URL Status: \$URL_STATUS"
-echo "Domain: \$DOMAIN"
-echo "Last Check: \$(date)"
-
-# Exit with error if either check failed
-if [[ "\$TUNNEL_STATUS" != "running" || "\$URL_STATUS" != "accessible" ]]; then
-    exit 1
-fi
-EOF
-
-sudo chmod +x /usr/local/bin/check-cloudflare-tunnel.sh
-
-# Create systemd timer for monitoring
-sudo tee /etc/systemd/system/cloudflare-tunnel-health.service > /dev/null <<EOF
-[Unit]
-Description=Cloudflare Tunnel Health Check
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/check-cloudflare-tunnel.sh
-EOF
-
-sudo tee /etc/systemd/system/cloudflare-tunnel-health.timer > /dev/null <<EOF
-[Unit]
-Description=Run Cloudflare Tunnel Health Check every 5 minutes
-Requires=cloudflare-tunnel-health.service
-
-[Timer]
-OnCalendar=*:0/5
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable cloudflare-tunnel-health.timer
-sudo systemctl start cloudflare-tunnel-health.timer
-
-log "✅ Health monitoring configured"
-
-# Final summary
-echo ""
-echo "🎉 CLOUDFLARE TUNNEL SETUP COMPLETE!"
-echo "====================================="
-echo ""
-echo "✅ CONFIGURATION SUMMARY:"
-echo "   • Tunnel Name: $TUNNEL_NAME"
-echo "   • Tunnel ID: $TUNNEL_ID"
-echo "   • Public URL: https://$FULL_DOMAIN"
-echo "   • Webhook URL: https://$FULL_DOMAIN/webhook/orders"
-echo ""
-echo "🔧 MANAGEMENT COMMANDS:"
-echo "   • Check tunnel status: sudo systemctl status cloudflared"
-echo "   • View tunnel logs: sudo journalctl -u cloudflared -f"
-echo "   • Restart tunnel: sudo systemctl restart cloudflared"
-echo "   • Test public URL: curl https://$FULL_DOMAIN/health"
-echo ""
-echo "📊 MONITORING:"
-echo "   • Health checks run every 5 minutes"
-echo "   • Logs: /var/log/cloudflare-tunnel-health.log"
-echo "   • Manual check: /usr/local/bin/check-cloudflare-tunnel.sh"
-echo ""
-echo "🌐 WIX WEBHOOK CONFIGURATION:"
-echo "   Configure your Wix webhook URL as:"
-echo "   👉 https://$FULL_DOMAIN/webhook/orders"
-echo ""
-echo "✅ Your printer service is now accessible from anywhere!"
-echo "   No router configuration or static IP needed!"
-echo ""
-
-log "Cloudflare Tunnel setup completed successfully!"
+# Start main menu
+main

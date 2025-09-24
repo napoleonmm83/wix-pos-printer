@@ -12,7 +12,8 @@
       "mcp__archon__find_tasks",
       "mcp__archon__manage_document",
       "Bash(python:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []
