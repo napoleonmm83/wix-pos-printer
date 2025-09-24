@@ -280,4 +280,30 @@ else
     log "Services not started. Please start them manually."
 fi
 
+# Phase 9: Public URL Setup (if not skipped)
+if [[ "${SKIP_PUBLIC_URL:-}" != "1" ]]; then
+    echo ""
+    header "🌐 PUBLIC URL SETUP"
+    echo "=========================================="
+    echo ""
+    echo "The Raspberry Pi setup is complete! Now let's configure public access"
+    echo "so Wix can send webhooks to your printer service."
+    echo ""
+
+    read -p "❓ Do you want to set up public URL access now? (Y/n): " -n 1 -r
+    echo ""
+
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        log "Skipping public URL setup."
+        log "You can run it later with: ./scripts/setup-public-url-menu.sh"
+    else
+        log "🚀 Starting Public URL Setup..."
+        echo ""
+
+        # Get script directory and run the public URL menu
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        exec "$SCRIPT_DIR/setup-public-url-menu.sh"
+    fi
+fi
+
 log "🚀 Deployment finished!"
