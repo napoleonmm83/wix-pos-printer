@@ -697,7 +697,7 @@ class HealthMonitor:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         INSERT INTO health_metrics 
-                        (resource_type, timestamp, value, status, metadata)
+                        (metric_name, timestamp, value, status, metadata)
                         VALUES (%s, %s, %s, %s, %s)
                     """, (
                         metric.resource_type.value,

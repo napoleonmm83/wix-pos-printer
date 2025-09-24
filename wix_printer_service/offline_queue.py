@@ -4,6 +4,8 @@ Provides persistent storage and priority-based processing for offline operations
 """
 import logging
 import json
+import psycopg2
+import psycopg2.extras
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import List, Optional, Dict, Any

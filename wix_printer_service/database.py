@@ -123,6 +123,17 @@ class Database:
                     cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);")
                     cursor.execute("CREATE INDEX IF NOT EXISTS idx_print_jobs_order_id ON print_jobs(order_id);")
                     cursor.execute("CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs(status);")
+
+                    # Create self_healing_events table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS self_healing_events (
+                            id SERIAL PRIMARY KEY,
+                            event_type TEXT NOT NULL,
+                            resource_type TEXT NOT NULL,
+                            timestamp TIMESTAMPTZ NOT NULL,
+                            details JSONB
+                        )
+                    """)
                 
                 logger.info("Database tables checked/created successfully")
                 
@@ -270,19 +281,25 @@ class Database:
 
     def _row_to_order(self, row: psycopg2.extras.DictRow) -> Order:
         """Convert database row (DictRow) to Order instance."""
+        # The JSONB fields might be returned as strings, so they must be loaded.
+        items_list = json.loads(row['items_json']) if isinstance(row['items_json'], str) else row['items_json']
+        customer_dict = json.loads(row['customer_json']) if isinstance(row['customer_json'], str) else row['customer_json']
+        delivery_dict = json.loads(row['delivery_json']) if isinstance(row['delivery_json'], str) else row['delivery_json']
+        raw_data_dict = json.loads(row['raw_data_json']) if isinstance(row['raw_data_json'], str) and row['raw_data_json'] else row['raw_data_json']
+
         return Order(
             id=row['id'],
             wix_order_id=row['wix_order_id'],
             status=OrderStatus(row['status']),
-            items=[OrderItem(**item_data) for item_data in row['items_json']],
-            customer=CustomerInfo(**row['customer_json']),
-            delivery=DeliveryInfo(**row['delivery_json']),
+            items=[OrderItem(**item_data) for item_data in items_list],
+            customer=CustomerInfo(**customer_dict),
+            delivery=DeliveryInfo(**delivery_dict),
             total_amount=row['total_amount'],
             currency=row['currency'],
             order_date=row['order_date'],
             created_at=row['created_at'],
             updated_at=row['updated_at'],
-            raw_data=row['raw_data_json']
+            raw_data=raw_data_dict
         )
 
     def _row_to_print_job(self, row: psycopg2.extras.DictRow) -> PrintJob:
