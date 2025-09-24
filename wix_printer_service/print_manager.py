@@ -190,18 +190,19 @@ class PrintManager:
     def _process_offline_queue(self):
         """Process items from the offline queue when printer is available."""
         try:
-                        # Get all items from the offline queue
-                        all_items = self.offline_queue.get_next_items(limit=10)
-                        
-                        # Filter for print jobs
-                        queue_items = [item for item in all_items if item.item_type == "print_job"]
+            # Get all items from the offline queue
+            all_items = self.offline_queue.get_next_items(limit=10)
             
-                        if not queue_items:
-                            return
-            
-                        logger.info(f"Processing {len(queue_items)} print jobs from offline queue")
-            
-                        for queue_item in queue_items:                if self._stop_event.is_set():
+            # Filter for print jobs
+            queue_items = [item for item in all_items if item.item_type == "print_job"]
+
+            if not queue_items:
+                return
+
+            logger.info(f"Processing {len(queue_items)} print jobs from offline queue")
+
+            for queue_item in queue_items:
+                if self._stop_event.is_set():
                     break
                 
                 # Update queue item status to processing
@@ -210,10 +211,11 @@ class PrintManager:
                 try:
                     # Get the actual print job from database
                     with self.database.get_connection() as conn:
-                        cursor = conn.execute(
-                            "SELECT * FROM print_jobs WHERE id = ?", (queue_item.item_id,)
-                        )
-                        row = cursor.fetchone()
+                        with conn.cursor() as cursor:
+                            cursor.execute(
+                                "SELECT * FROM print_jobs WHERE id = %s", (queue_item.item_id,)
+                            )
+                            row = cursor.fetchone()
                         
                         if row:
                             print_job = self.database._row_to_print_job(row)
