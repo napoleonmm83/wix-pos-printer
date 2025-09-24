@@ -20,6 +20,8 @@ from ..print_manager import PrintManager
 from ..connectivity_monitor import ConnectivityMonitor
 from ..offline_queue import OfflineQueueManager
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s')
 logger = logging.getLogger(__name__)
 
 # --- Pydantic Models for Request Bodies ---
@@ -30,36 +32,63 @@ class WebhookData(BaseModel):
     data: WixWebhookPayload
     metadata: Optional[Dict[str, Any]] = None
 
-# --- Dependency Injection Functions ---
-global_instances = {}
+# --- Singleton Dependency Management ---
+# Use a dictionary to hold singleton instances of our services
+global_instances: Dict[str, Any] = {}
 
 def get_database() -> Database:
+    """Dependency injection for Database."""
     if "database" not in global_instances:
         global_instances["database"] = Database()
+        # Initialize the database schema if needed
+        global_instances["database"].init_db()
     return global_instances["database"]
 
-def get_order_service(db: Database = Depends(get_database)) -> OrderService:
+def get_printer_client() -> PrinterClient:
+    """Dependency injection for PrinterClient."""
+    if "printer_client" not in global_instances:
+        logger.info("Creating and connecting PrinterClient singleton.")
+        client = PrinterClient()
+        if not client.connect():
+            logger.error("Failed to connect to printer on startup.")
+            # Depending on requirements, you might want to raise an exception
+            # or handle this state gracefully. For now, we'll allow it to start
+            # and let the PrintManager's retry logic handle it.
+        global_instances["printer_client"] = client
+    return global_instances["printer_client"]
+
+def get_print_manager(
+    db: Database = Depends(get_database),
+    printer_client: PrinterClient = Depends(get_printer_client)
+) -> PrintManager:
+    """Dependency injection for PrintManager."""
+    if "print_manager" not in global_instances:
+        logger.info("Creating PrintManager singleton.")
+        manager = PrintManager(database=db, printer_client=printer_client)
+        global_instances["print_manager"] = manager
+    return global_instances["print_manager"]
+
+def get_order_service(
+    db: Database = Depends(get_database),
+    print_manager: PrintManager = Depends(get_print_manager)
+) -> OrderService:
+    """Dependency injection for OrderService."""
     if "order_service" not in global_instances:
-        global_instances["order_service"] = OrderService(db)
+        logger.info("Creating OrderService singleton.")
+        # The OrderService now needs the PrintManager to create jobs
+        global_instances["order_service"] = OrderService(db, print_manager)
     return global_instances["order_service"]
 
 def get_wix_client() -> Optional[WixClient]:
+    """Dependency injection for WixClient."""
     if "wix_client" not in global_instances:
         try:
+            logger.info("Creating WixClient singleton.")
             global_instances["wix_client"] = WixClient()
         except Exception as e:
             logger.warning(f"Could not initialize Wix client: {e}")
             global_instances["wix_client"] = None
     return global_instances["wix_client"]
-
-def get_print_manager(db: Database = Depends(get_database)) -> Optional[PrintManager]:
-    # This function might need more dependencies if fully implemented
-    if "print_manager" not in global_instances:
-        # A placeholder for a real printer client is needed
-        class MockPrinterClient:
-            def is_connected(self): return False
-        global_instances["print_manager"] = PrintManager(db, MockPrinterClient())
-    return global_instances["print_manager"]
 
 
 # --- FastAPI App Creation ---
@@ -67,15 +96,51 @@ def create_app():
     app = FastAPI(
         title="Wix Printer Service",
         description="Automated printing service for Wix orders on Raspberry Pi",
-        version="1.1.0",
+        version="1.2.0", # Incremented version
         docs_url="/docs",
         redoc_url="/redoc"
     )
 
+    @app.on_event("startup")
+    async def startup_event():
+        """Initializes and starts background services."""
+        logger.info("Application startup...")
+        # Manually resolve dependencies to start them
+        db = get_database()
+        printer = get_printer_client()
+        manager = get_print_manager(db, printer)
+        
+        # Start the print manager's background worker
+        logger.info("Starting Print Manager background worker...")
+        manager.start()
+        logger.info("Startup complete.")
+
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        """Stops background services gracefully."""
+        logger.info("Application shutdown...")
+        if "print_manager" in global_instances:
+            logger.info("Stopping Print Manager...")
+            global_instances["print_manager"].stop()
+        if "printer_client" in global_instances:
+            logger.info("Disconnecting PrinterClient...")
+            global_instances["printer_client"].disconnect()
+        logger.info("Shutdown complete.")
+
     @app.get("/health", tags=["Monitoring"], response_model=dict)
-    def health_check():
+    def health_check(
+        printer_client: PrinterClient = Depends(get_printer_client),
+        print_manager: PrintManager = Depends(get_print_manager)
+    ):
         """Health check endpoint to confirm the service is running."""
-        return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+        printer_info = printer_client.get_printer_info()
+        job_stats = print_manager.get_job_statistics()
+        return {
+            "status": "ok",
+            "timestamp": datetime.utcnow().isoformat(),
+            "printer": printer_info,
+            "jobs": job_stats
+        }
 
     @app.post("/jobs/wix", status_code=202, tags=["Jobs"])
     def queue_wix_order_job(
@@ -96,7 +161,8 @@ def create_app():
             if not order_data:
                 raise HTTPException(status_code=404, detail=f"Order {wix_order_id} not found on Wix.")
 
-            # Ingest the order using the order service
+            # Ingest the order using the order service.
+            # This will now also create the print jobs via the PrintManager.
             result = order_service.ingest_order_from_api(order_data)
             
             if result.get("error"):
