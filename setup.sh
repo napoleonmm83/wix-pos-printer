@@ -21,10 +21,11 @@ echo "1️⃣ Complete Setup (Raspberry Pi + Public URL)"
 echo "2️⃣ Public URL Setup Only"
 echo "3️⃣ Raspberry Pi Setup Only"
 echo "4️⃣ Update Configuration (Auto-Check Settings)"
+echo "5️⃣ Printer Setup & Configuration 🖨️"
 echo ""
 
 while true; do
-    read -p "👉 Choose setup option (1-4): " setup_choice
+    read -p "👉 Choose setup option (1-5): " setup_choice
     case $setup_choice in
         1)
             echo "🚀 Starting complete setup..."
@@ -47,8 +48,13 @@ while true; do
             echo ""
             exec ./scripts/update-config.sh
             ;;
+        5)
+            echo "🖨️ Starting printer setup..."
+            echo ""
+            exec ./scripts/setup-printer.sh
+            ;;
         *)
-            echo "❌ Please enter 1, 2, 3, or 4"
+            echo "❌ Please enter 1, 2, 3, 4, or 5"
             ;;
     esac
 done
