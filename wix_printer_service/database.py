@@ -149,6 +149,12 @@ class Database:
                     order_dict = order.to_dict()
                     
                     # Use INSERT ... ON CONFLICT for "upsert" behavior
+                    # Sanitize JSON strings to remove null characters, which PostgreSQL does not support.
+                    items_json_str = json.dumps(order_dict['items_json']).replace('\u0000', '')
+                    customer_json_str = json.dumps(order_dict['customer_json']).replace('\u0000', '')
+                    delivery_json_str = json.dumps(order_dict['delivery_json']).replace('\u0000', '')
+                    raw_data_json_str = json.dumps(order_dict['raw_data_json']).replace('\u0000', '')
+
                     cursor.execute("""
                         INSERT INTO orders (
                             id, wix_order_id, status, items_json, customer_json,
@@ -167,11 +173,11 @@ class Database:
                             raw_data_json = EXCLUDED.raw_data_json;
                     """, (
                         order_dict['id'], order_dict['wix_order_id'], order_dict['status'],
-                        json.dumps(order_dict['items_json']), json.dumps(order_dict['customer_json']),
-                        json.dumps(order_dict['delivery_json']), order_dict['total_amount'],
+                        items_json_str, customer_json_str,
+                        delivery_json_str, order_dict['total_amount'],
                         order_dict['currency'], order_dict['order_date'],
                         order_dict['created_at'], order_dict['updated_at'],
-                        json.dumps(order_dict['raw_data_json'])
+                        raw_data_json_str
                     ))
             logger.info(f"Order {order.id} saved successfully")
             return True
