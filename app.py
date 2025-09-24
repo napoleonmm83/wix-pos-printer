@@ -186,7 +186,7 @@ async def auto_check_new_orders():
                     print_payload = {"data": {"orderId": order_id}, "metadata": {"source": "auto_check"}}
                     try:
                         async with httpx.AsyncClient(timeout=10.0) as client:
-                            response = await client.post(f"{PRINTER_SERVICE_URL}/jobs/wix", json=print_payload)
+                            response = await client.post(f"{PRINTER_SERVICE_URL}/webhook/orders", json=print_payload)
                             if response.status_code == 202:
                                 mark_order_as_processed(order_id, "sent")
                             else:
