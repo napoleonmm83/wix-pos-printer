@@ -269,26 +269,31 @@ create_tunnel() {
         TUNNEL_CREDS="$HOME/.cloudflared/$TUNNEL_ID.json"
         if [[ ! -f "$TUNNEL_CREDS" ]]; then
             warn "Existing tunnel found but credentials missing"
-            log "Recreating tunnel to generate new credentials..."
+            log "This is a common issue when tunnels exist remotely but credentials are missing locally"
 
-            # Delete existing tunnel and create new one
-            if cloudflared tunnel delete "$TUNNEL_ID" --force 2>/dev/null; then
-                log "✅ Old tunnel deleted successfully"
-            else
-                warn "Could not delete old tunnel, continuing anyway..."
-            fi
+            # Strategy: Create tunnel with unique name to avoid conflicts
+            TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+            NEW_TUNNEL_NAME="$TUNNEL_NAME-$TIMESTAMP"
+            log "Creating new tunnel with unique name: $NEW_TUNNEL_NAME"
 
-            # Create new tunnel
-            if cloudflared tunnel create "$TUNNEL_NAME"; then
-                TUNNEL_ID=$(cloudflared tunnel list | grep "$TUNNEL_NAME" | awk '{print $1}')
-                if [[ -z "$TUNNEL_ID" ]]; then
-                    error "Could not find tunnel ID after recreation"
+            if cloudflared tunnel create "$NEW_TUNNEL_NAME"; then
+                NEW_TUNNEL_ID=$(cloudflared tunnel list | grep "$NEW_TUNNEL_NAME" | awk '{print $1}')
+                if [[ -n "$NEW_TUNNEL_ID" ]]; then
+                    log "✅ New tunnel created successfully (ID: $NEW_TUNNEL_ID)"
+                    log "Old tunnel ID: $TUNNEL_ID (will remain in Cloudflare but unused)"
+                    log "New tunnel ID: $NEW_TUNNEL_ID (will be used for this setup)"
+
+                    # Update variables to use new tunnel
+                    TUNNEL_ID="$NEW_TUNNEL_ID"
+                    TUNNEL_NAME="$NEW_TUNNEL_NAME"
+                    TUNNEL_RECREATED="true"
+                else
+                    error "Could not find new tunnel ID after creation"
                     return 1
                 fi
-                log "✅ New tunnel created successfully (ID: $TUNNEL_ID)"
-                TUNNEL_RECREATED="true"
             else
-                error "Failed to recreate tunnel"
+                error "Failed to create new unique tunnel"
+                log "You may need to manually clean up tunnels in the Cloudflare dashboard"
                 return 1
             fi
         fi
