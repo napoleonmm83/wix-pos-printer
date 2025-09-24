@@ -592,17 +592,17 @@ class PrintManager:
         
         try:
             with self.database.get_connection() as conn:
-                conn.execute("""
-                    INSERT INTO self_healing_events 
-                    (event_type, resource_type, timestamp, details)
-                    VALUES (?, ?, ?, ?)
-                """, (
-                    event_type,
-                    resource_type,
-                    datetime.now().isoformat(),
-                    json.dumps(details) if details else None
-                ))
-                conn.commit()
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO self_healing_events 
+                        (event_type, resource_type, timestamp, details)
+                        VALUES (%s, %s, %s, %s)
+                    """, (
+                        event_type,
+                        resource_type,
+                        datetime.now().isoformat(),
+                        json.dumps(details) if details else None
+                    ))
         except Exception as e:
             logger.error(f"Failed to log self-healing event: {e}")
     
@@ -754,15 +754,16 @@ class PrintManager:
         
         try:
             with self.database.get_connection() as conn:
-                cursor = conn.execute("""
-                    SELECT event_type, resource_type, timestamp, details
-                    FROM self_healing_events
-                    ORDER BY timestamp DESC
-                    LIMIT ?
-                """, (limit,))
-                
-                events = []
-                for row in cursor.fetchall():
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT event_type, resource_type, timestamp, details
+                        FROM self_healing_events
+                        ORDER BY timestamp DESC
+                        LIMIT %s
+                    """, (limit,))
+                    
+                    events = []
+                    for row in cursor.fetchall():
                     events.append({
                         "event_type": row[0],
                         "resource_type": row[1],
@@ -941,10 +942,11 @@ class PrintManager:
         try:
             # Get job from database
             with self.database.get_connection() as conn:
-                cursor = conn.execute(
-                    "SELECT * FROM print_jobs WHERE id = ?", (job_id,)
-                )
-                row = cursor.fetchone()
+                with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+                    cursor.execute(
+                        "SELECT * FROM print_jobs WHERE id = %s", (job_id,)
+                    )
+                    row = cursor.fetchone()
                 
                 if not row:
                     logger.error(f"Print job {job_id} not found")
@@ -975,26 +977,27 @@ class PrintManager:
         """
         try:
             with self.database.get_connection() as conn:
-                # Count jobs by status
-                cursor = conn.execute("""
-                    SELECT status, COUNT(*) as count 
-                    FROM print_jobs 
-                    GROUP BY status
-                """)
-                status_counts = {row[0]: row[1] for row in cursor.fetchall()}
+                with conn.cursor() as cursor:
+                    # Count jobs by status
+                    cursor.execute("""
+                        SELECT status, COUNT(*) as count 
+                        FROM print_jobs 
+                        GROUP BY status
+                    """)
+                    status_counts = {row[0]: row[1] for row in cursor.fetchall()}
                 
                 # Get recent job counts (last 24 hours)
                 yesterday = datetime.now() - timedelta(days=1)
-                cursor = conn.execute("""
+                cursor.execute("""
                     SELECT COUNT(*) FROM print_jobs 
-                    WHERE created_at > ?
+                    WHERE created_at > %s
                 """, (yesterday.isoformat(),))
                 recent_jobs = cursor.fetchone()[0]
                 
                 # Get failed jobs in last 24 hours
-                cursor = conn.execute("""
+                cursor.execute("""
                     SELECT COUNT(*) FROM print_jobs 
-                    WHERE status = 'failed' AND updated_at > ?
+                    WHERE status = 'failed' AND updated_at > %s
                 """, (yesterday.isoformat(),))
                 recent_failures = cursor.fetchone()[0]
                 
@@ -1028,18 +1031,18 @@ class PrintManager:
         """
         try:
             with self.database.get_connection() as conn:
-                # Reset failed jobs to pending
-                cursor = conn.execute("""
-                    UPDATE print_jobs 
-                    SET status = 'pending', 
-                        attempts = 0, 
-                        error_message = NULL,
-                        updated_at = ?
-                    WHERE status = 'failed'
-                """, (datetime.now().isoformat(),))
-                
-                count = cursor.rowcount
-                conn.commit()
+                with conn.cursor() as cursor:
+                    # Reset failed jobs to pending
+                    cursor.execute("""
+                        UPDATE print_jobs 
+                        SET status = 'pending', 
+                            attempts = 0, 
+                            error_message = NULL,
+                            updated_at = %s
+                        WHERE status = 'failed'
+                    """, (datetime.now().isoformat(),))
+                    
+                    count = cursor.rowcount
                 
                 logger.info(f"Reset {count} failed jobs for retry")
                 return count
