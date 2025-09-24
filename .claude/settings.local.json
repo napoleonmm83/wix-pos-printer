@@ -13,7 +13,13 @@
       "mcp__archon__manage_document",
       "Bash(python:*)",
       "Bash(curl:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "WebSearch",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "Bash(grep:*)",
+      "Bash(export:*)",
+      "Bash(export WIX_SITE_ID=\"2cb0793c-4d21-4c06-89b2-d8bf3728aa21\")",
+      "Read(//opt/**)"
     ],
     "deny": [],
     "ask": []

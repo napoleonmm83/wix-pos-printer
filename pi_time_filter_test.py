@@ -8,6 +8,7 @@ import sys
 import os
 from datetime import datetime, timezone
 import logging
+from dotenv import load_dotenv
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -137,13 +138,25 @@ def main():
     print("🍓 Starting Raspberry Pi Time Filter Test...")
     print()
 
+    # Load .env file explicitly
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if os.path.exists(env_path):
+        print(f"🔧 Loading environment from: {env_path}")
+        load_dotenv(env_path)
+        print("✅ .env file loaded successfully")
+    else:
+        print(f"⚠️  No .env file found at: {env_path}")
+        print("   Checking for environment variables from shell...")
+
     # Check environment
     api_key = os.getenv('WIX_API_KEY')
     site_id = os.getenv('WIX_SITE_ID')
 
     if not api_key or not site_id:
         print("❌ Missing environment variables!")
-        print("   Make sure WIX_API_KEY and WIX_SITE_ID are set in .env")
+        print(f"   WIX_API_KEY: {'Found' if api_key else 'Missing'}")
+        print(f"   WIX_SITE_ID: {'Found' if site_id else 'Missing'}")
+        print("   Make sure WIX_API_KEY and WIX_SITE_ID are set in .env or environment")
         return False
 
     print(f"✅ Environment variables found")
