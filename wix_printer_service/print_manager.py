@@ -764,7 +764,7 @@ class PrintManager:
                     
                     events = []
                     for row in cursor.fetchall():
-                    events.append({
+                        events.append({
                         "event_type": row[0],
                         "resource_type": row[1],
                         "timestamp": row[2],
