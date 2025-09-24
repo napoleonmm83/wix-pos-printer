@@ -39,6 +39,14 @@ def test_order_printing():
         printer_client = PrinterClient()
         print("✅ Printer Client initialized")
 
+        # Test printer connection
+        print("🔌 Connecting to printer...")
+        if not printer_client.connect():
+            print("❌ Failed to connect to printer")
+            print("   Check USB connection and printer power")
+            return False
+        print("✅ Printer connected successfully")
+
         # Test API connection
         if not wix_client.test_connection():
             print("❌ API connection failed")
@@ -223,13 +231,25 @@ def main():
         import subprocess
         try:
             result = subprocess.run(['lsusb'], capture_output=True, text=True)
-            if '04b8' in result.stdout:  # Epson vendor ID
-                print("✅ USB printer detected (Epson)")
+            print(f"   USB Devices found:")
+            for line in result.stdout.strip().split('\n'):
+                if '04b8' in line:  # Epson vendor ID
+                    print(f"   ✅ {line}")
+                elif line.strip():
+                    print(f"      {line}")
+
+            if '04b8' in result.stdout:
+                print("✅ Epson USB printer detected")
+                # Check for specific product ID
+                if '0e32' in result.stdout:
+                    print("✅ TM-m30III model confirmed")
+                else:
+                    print("⚠️  Different Epson model detected")
             else:
-                print("⚠️  No Epson USB printer detected")
-                print("   Proceeding anyway - printer might still work")
-        except:
-            print("⚠️  Could not check USB devices")
+                print("❌ No Epson USB printer found")
+                print("   Make sure printer is connected and powered on")
+        except Exception as e:
+            print(f"⚠️  Could not check USB devices: {e}")
     else:
         print(f"📡 Network printer configured: {os.getenv('PRINTER_IP', 'Unknown IP')}")
 

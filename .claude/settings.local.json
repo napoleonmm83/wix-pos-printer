@@ -19,7 +19,9 @@
       "Bash(grep:*)",
       "Bash(export:*)",
       "Bash(export WIX_SITE_ID=\"2cb0793c-4d21-4c06-89b2-d8bf3728aa21\")",
-      "Read(//opt/**)"
+      "Read(//opt/**)",
+      "mcp__archon__rag_search_knowledge_base",
+      "mcp__archon__rag_get_available_sources"
     ],
     "deny": [],
     "ask": []
