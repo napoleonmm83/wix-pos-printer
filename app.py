@@ -116,8 +116,24 @@ def has_order_been_updated(order_id: str, current_updated_date: str) -> bool:
         if not last_known_update:
             return True  # No update date stored, consider it updated
 
-        # Compare update dates
-        return current_updated_date != last_known_update
+        # Normalize dates for comparison by removing microseconds and timezone info
+        def normalize_date(date_str):
+            if not date_str:
+                return ""
+            # Remove microseconds (.XXX) and timezone (Z) for comparison
+            date_str = str(date_str)
+            if '.' in date_str:
+                date_str = date_str.split('.')[0]
+            date_str = date_str.replace('Z', '').replace('+00:00', '')
+            return date_str
+
+        normalized_current = normalize_date(current_updated_date)
+        normalized_last = normalize_date(last_known_update)
+
+        # Debug log for troubleshooting
+        logging.debug(f"Date comparison for {order_id}: Current='{normalized_current}' vs Last='{normalized_last}'")
+
+        return normalized_current != normalized_last
     except psycopg2.Error as e:
         logging.error(f"Error checking if order {order_id} was updated: {e}")
         return False
