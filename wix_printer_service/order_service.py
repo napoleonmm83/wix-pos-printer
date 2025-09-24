@@ -336,6 +336,14 @@ class OrderService:
                     job_id = self.database.save_print_job(print_job)
                     if job_id:
                         created_jobs += 1
+            elif existing_order and self._should_create_jobs_for_updated_order(existing_order, order):
+                # Create print jobs for existing orders that meet cash payment criteria
+                logger.info(f"Creating print jobs for updated order {order.id} (cash payment or status change)")
+                print_jobs = self._create_print_jobs(order)
+                for print_job in print_jobs:
+                    job_id = self.database.save_print_job(print_job)
+                    if job_id:
+                        created_jobs += 1
 
             return {
                 "order_id": order.id,
@@ -351,6 +359,81 @@ class OrderService:
             return {"error": str(e), "order_id": wix_data.get('id', None)}
 
     
+    def _should_create_jobs_for_updated_order(self, existing_order: Order, updated_order: Order) -> bool:
+        """
+        Determine if print jobs should be created for an updated existing order.
+
+        This handles special cases like:
+        - Cash/Bar payments (NOT_PAID but should be printed)
+        - Status changes that require printing
+        - Orders that haven't been printed yet
+
+        Args:
+            existing_order: The existing order from database
+            updated_order: The updated order from Wix
+
+        Returns:
+            bool: True if print jobs should be created
+        """
+        try:
+            # Check if order already has print jobs - avoid duplicates
+            with self.database.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM print_jobs WHERE order_id = %s",
+                        (updated_order.id,)
+                    )
+                    existing_jobs = cursor.fetchone()[0]
+
+                    if existing_jobs > 0:
+                        logger.debug(f"Order {updated_order.id} already has {existing_jobs} print jobs, skipping")
+                        return False
+
+            # Check for cash/bar payment indicators in raw_data
+            raw_data = updated_order.raw_data or {}
+
+            # Look for payment method indicators
+            payment_methods = []
+
+            # Check paymentStatus and paymentOptions
+            payment_status = raw_data.get('paymentStatus', '').upper()
+            payment_options = raw_data.get('paymentOptions', [])
+
+            # Extract payment method from payment options
+            for option in payment_options:
+                if isinstance(option, dict):
+                    method = option.get('type', '').lower()
+                    payment_methods.append(method)
+
+            # Check if it's a cash/offline payment
+            cash_indicators = ['cash', 'bar', 'offline', 'cod', 'pay_on_delivery']
+            is_cash_payment = any(indicator in method for method in payment_methods for indicator in cash_indicators)
+
+            # Alternative: Check if order is NOT_PAID but APPROVED (typical for cash orders)
+            fulfillment_status = raw_data.get('fulfillmentStatus', '').upper()
+            is_approved_unpaid = (
+                payment_status == 'NOT_PAID' and
+                fulfillment_status in ['NOT_FULFILLED', 'APPROVED']
+            )
+
+            if is_cash_payment or is_approved_unpaid:
+                logger.info(f"Order {updated_order.id} qualifies for printing: "
+                           f"cash_payment={is_cash_payment}, approved_unpaid={is_approved_unpaid}")
+                return True
+
+            # Check for significant status changes
+            if existing_order.status != updated_order.status:
+                logger.info(f"Order {updated_order.id} status changed: "
+                           f"{existing_order.status.value} -> {updated_order.status.value}")
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Error checking if jobs should be created for order {updated_order.id}: {e}")
+            # When in doubt, don't create duplicate jobs
+            return False
+
     def _determine_order_priority(self, order: Order) -> QueuePriority:
         """
         Determine priority for an order in the offline queue.
