@@ -223,6 +223,40 @@ class SmartOrderFilter:
             if criteria.requires_shipping != requires_shipping:
                 return False
 
+        # Created date filter (CLIENT-SIDE: API filters are broken, so we must filter here)
+        if criteria.created_after or criteria.created_before:
+            try:
+                created_date_str = order.get("createdDate", "")
+                if not created_date_str:
+                    self.logger.warning(f"Missing createdDate for order {order.get('id')}")
+                    return False  # Reject orders without dates when time filtering is required
+
+                # Parse order date (timezone-aware)
+                created_date = datetime.fromisoformat(created_date_str.replace("Z", "+00:00"))
+
+                # Convert criteria to timezone-aware if they are naive
+                if criteria.created_after:
+                    cutoff_after = criteria.created_after
+                    if cutoff_after.tzinfo is None:
+                        # Make timezone-aware by assuming local time = UTC for comparison
+                        from datetime import timezone
+                        cutoff_after = cutoff_after.replace(tzinfo=timezone.utc)
+                    if created_date < cutoff_after:
+                        return False
+
+                if criteria.created_before:
+                    cutoff_before = criteria.created_before
+                    if cutoff_before.tzinfo is None:
+                        # Make timezone-aware by assuming local time = UTC for comparison
+                        from datetime import timezone
+                        cutoff_before = cutoff_before.replace(tzinfo=timezone.utc)
+                    if created_date > cutoff_before:
+                        return False
+
+            except (ValueError, TypeError) as e:
+                self.logger.warning(f"Could not parse createdDate '{order.get('createdDate', '')}' for order {order.get('id')}: {e}")
+                return False  # Reject orders with unparseable dates when time filtering is required
+
         # Updated date filter (API might not support this reliably)
         if criteria.updated_after or criteria.updated_before:
             try:

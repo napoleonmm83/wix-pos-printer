@@ -12,7 +12,16 @@
       "mcp__archon__find_tasks",
       "mcp__archon__manage_document",
       "Bash(python:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "WebSearch",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "Bash(grep:*)",
+      "Bash(export:*)",
+      "Bash(export WIX_SITE_ID=\"2cb0793c-4d21-4c06-89b2-d8bf3728aa21\")",
+      "Read(//opt/**)",
+      "mcp__archon__rag_search_knowledge_base",
+      "mcp__archon__rag_get_available_sources"
     ],
     "deny": [],
     "ask": []

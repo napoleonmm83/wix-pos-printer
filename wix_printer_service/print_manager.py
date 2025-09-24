@@ -86,6 +86,7 @@ class PrintManager:
         self._stop_event.clear()
         self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker_thread.start()
+        logger.info(f"!!! PRINT MANAGER WORKER THREAD LAUNCHED (Thread ID: {self._worker_thread.ident}) !!!")
         
         # Start recovery manager
         self.recovery_manager.start()
@@ -147,7 +148,8 @@ class PrintManager:
     
     def _worker_loop(self):
         """Main worker loop for processing print jobs."""
-        logger.info("Print Manager worker loop started")
+        # Give the main application a moment to fully start up
+        time.sleep(5)
         
         while self._running and not self._stop_event.is_set():
             try:
@@ -190,14 +192,17 @@ class PrintManager:
     def _process_offline_queue(self):
         """Process items from the offline queue when printer is available."""
         try:
-            # Get print jobs from offline queue
-            queue_items = self.offline_queue.get_next_items(item_type="print_job", limit=10)
+            # Get all items from the offline queue
+            all_items = self.offline_queue.get_next_items(limit=10)
             
+            # Filter for print jobs
+            queue_items = [item for item in all_items if item.item_type == "print_job"]
+
             if not queue_items:
                 return
-            
+
             logger.info(f"Processing {len(queue_items)} print jobs from offline queue")
-            
+
             for queue_item in queue_items:
                 if self._stop_event.is_set():
                     break
@@ -208,10 +213,11 @@ class PrintManager:
                 try:
                     # Get the actual print job from database
                     with self.database.get_connection() as conn:
-                        cursor = conn.execute(
-                            "SELECT * FROM print_jobs WHERE id = ?", (queue_item.item_id,)
-                        )
-                        row = cursor.fetchone()
+                        with conn.cursor() as cursor:
+                            cursor.execute(
+                                "SELECT * FROM print_jobs WHERE id = %s", (queue_item.item_id,)
+                            )
+                            row = cursor.fetchone()
                         
                         if row:
                             print_job = self.database._row_to_print_job(row)
@@ -780,9 +786,11 @@ class PrintManager:
         try:
             # Connect if not already connected
             if not self.printer_client.is_connected:
+                logger.info("Printer not connected. Attempting to connect...")
                 if not self.printer_client.connect():
-                    logger.error("Failed to connect to printer")
+                    logger.error("Failed to connect to printer. Check USB connection and permissions.")
                     return False
+                logger.info("Printer connected successfully.")
             
             # Check printer status
             status = self.printer_client.get_status()

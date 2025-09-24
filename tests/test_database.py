@@ -1,11 +1,14 @@
 """
 Unit tests for database operations.
-Tests SQLite database initialization and CRUD operations.
+Tests PostgreSQL database initialization and CRUD operations.
 """
 import pytest
-import tempfile
 import os
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables for the tests
+load_dotenv()
 
 from wix_printer_service.database import Database, DatabaseError
 from wix_printer_service.models import (
@@ -13,280 +16,189 @@ from wix_printer_service.models import (
     OrderStatus, PrintJobStatus
 )
 
+# Check if DATABASE_URL is set, skip all tests if not
+DATABASE_URL = os.environ.get("DATABASE_URL")
+pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="DATABASE_URL environment variable not set")
 
-class TestDatabase:
-    """Test cases for Database class."""
-    
-    @pytest.fixture
-    def temp_db(self):
-        """Create a temporary database for testing."""
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
-        temp_file.close()
+@pytest.fixture(scope="module")
+def db_instance():
+    """
+    Provides a database instance for the entire test module.
+    The database schema is created once.
+    """
+    try:
+        db = Database()
+        return db
+    except DatabaseError as e:
+        pytest.fail(f"Database connection failed: {e}")
 
-        db = Database(temp_file.name)
-        yield db
+@pytest.fixture(autouse=True)
+def cleanup_tables(db_instance):
+    """
+    Fixture to automatically clean up tables before each test.
+    This ensures test isolation.
+    """
+    tables = ["print_jobs", "orders", "health_metrics", "circuit_breaker_failures", "offline_queue"]
+    with db_instance.get_connection() as conn:
+        with conn.cursor() as cursor:
+            for table in tables:
+                # Use TRUNCATE and CASCADE to handle foreign key relationships
+                cursor.execute(f"TRUNCATE TABLE {table} RESTART IDENTITY CASCADE;")
+    yield
 
-        # Cleanup
-        try:
-            db.close()
-        except Exception:
-            pass
 
-        # Force close any remaining connections and wait before deletion
-        import time
-        time.sleep(0.1)
+def test_database_initialization(db_instance):
+    """Test database initialization creates tables."""
+    with db_instance.get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name IN ('orders', 'print_jobs', 'health_metrics');
+            """)
+            tables = [row[0] for row in cursor.fetchall()]
+            assert 'orders' in tables
+            assert 'print_jobs' in tables
+            assert 'health_metrics' in tables
 
-        try:
-            os.unlink(temp_file.name)
-        except PermissionError:
-            # On Windows, the file might still be locked, try again after a brief delay
-            time.sleep(0.5)
-            try:
-                os.unlink(temp_file.name)
-            except PermissionError:
-                # If still can't delete, let it be cleaned up by temp directory cleanup
-                pass
+def test_save_and_get_order(db_instance):
+    """Test saving and retrieving an order."""
+    items = [OrderItem(id="item-1", name="Test Item", quantity=2, price=10.0)]
+    customer = CustomerInfo(email="test@example.com", first_name="John", last_name="Doe")
+    delivery = DeliveryInfo(address="123 Main St")
     
-    def test_database_initialization(self, temp_db):
-        """Test database initialization creates tables."""
-        # Test that we can get a connection
-        conn = temp_db.get_connection()
-        
-        # Check that tables exist
-        cursor = conn.execute("""
-            SELECT name FROM sqlite_master 
-            WHERE type='table' AND name IN ('orders', 'print_jobs')
-        """)
-        tables = [row[0] for row in cursor.fetchall()]
-        
-        assert 'orders' in tables
-        assert 'print_jobs' in tables
-        
-        conn.close()
+    order = Order(
+        id="test_order_123",
+        wix_order_id="wix_123",
+        status=OrderStatus.PENDING,
+        items=items,
+        customer=customer,
+        delivery=delivery,
+        total_amount=20.0,
+        currency="CHF",
+        order_date=datetime.now(),
+        created_at=datetime.now(),
+        updated_at=datetime.now()
+    )
     
-    def test_save_and_get_order(self, temp_db):
-        """Test saving and retrieving an order."""
-        # Create test order
-        items = [OrderItem(id="1", name="Test Item", quantity=2, price=10.0)]
-        customer = CustomerInfo(email="test@example.com", first_name="John")
-        delivery = DeliveryInfo(address="123 Main St")
-        
-        order = Order(
-            id="test_order_123",
-            wix_order_id="wix_123",
-            status=OrderStatus.PENDING,
-            items=items,
-            customer=customer,
-            delivery=delivery,
-            total_amount=20.0
-        )
-        
-        # Save order
-        result = temp_db.save_order(order)
-        assert result is True
-        
-        # Retrieve order
-        retrieved_order = temp_db.get_order("test_order_123")
-        
-        assert retrieved_order is not None
-        assert retrieved_order.id == "test_order_123"
-        assert retrieved_order.wix_order_id == "wix_123"
-        assert retrieved_order.status == OrderStatus.PENDING
-        assert len(retrieved_order.items) == 1
-        assert retrieved_order.items[0].name == "Test Item"
-        assert retrieved_order.customer.email == "test@example.com"
-        assert retrieved_order.delivery.address == "123 Main St"
-        assert retrieved_order.total_amount == 20.0
+    assert db_instance.save_order(order) is True
     
-    def test_get_nonexistent_order(self, temp_db):
-        """Test retrieving a non-existent order."""
-        order = temp_db.get_order("nonexistent_order")
-        assert order is None
+    retrieved_order = db_instance.get_order("test_order_123")
     
-    def test_get_orders_by_status(self, temp_db):
-        """Test retrieving orders by status."""
-        # Create test orders with different statuses
-        items = [OrderItem(id="1", name="Test Item", quantity=1, price=10.0)]
-        customer = CustomerInfo(email="test@example.com")
-        delivery = DeliveryInfo()
-        
-        order1 = Order(
-            id="order_1", wix_order_id="wix_1", status=OrderStatus.PENDING,
-            items=items, customer=customer, delivery=delivery, total_amount=10.0
-        )
-        order2 = Order(
-            id="order_2", wix_order_id="wix_2", status=OrderStatus.PROCESSING,
-            items=items, customer=customer, delivery=delivery, total_amount=10.0
-        )
-        order3 = Order(
-            id="order_3", wix_order_id="wix_3", status=OrderStatus.PENDING,
-            items=items, customer=customer, delivery=delivery, total_amount=10.0
-        )
-        
-        # Save orders
-        temp_db.save_order(order1)
-        temp_db.save_order(order2)
-        temp_db.save_order(order3)
-        
-        # Get pending orders
-        pending_orders = temp_db.get_orders_by_status(OrderStatus.PENDING)
-        assert len(pending_orders) == 2
-        
-        # Get processing orders
-        processing_orders = temp_db.get_orders_by_status(OrderStatus.PROCESSING)
-        assert len(processing_orders) == 1
-        assert processing_orders[0].id == "order_2"
+    assert retrieved_order is not None
+    assert retrieved_order.id == "test_order_123"
+    assert retrieved_order.wix_order_id == "wix_123"
+    assert retrieved_order.status == OrderStatus.PENDING
+    assert len(retrieved_order.items) == 1
+    assert retrieved_order.items[0].name == "Test Item"
+    assert retrieved_order.customer.email == "test@example.com"
+    assert retrieved_order.delivery.address == "123 Main St"
+    assert retrieved_order.total_amount == 20.0
+
+def test_get_nonexistent_order(db_instance):
+    """Test retrieving a non-existent order."""
+    order = db_instance.get_order("nonexistent_order")
+    assert order is None
+
+def test_get_orders_by_status(db_instance):
+    """Test retrieving orders by status."""
+    items = [OrderItem(id="1", name="Test Item", quantity=1, price=10.0)]
+    customer = CustomerInfo(email="test@example.com", first_name="Jane", last_name="Doe")
+    delivery = DeliveryInfo(address="456 Oak Ave")
+    now = datetime.now()
+
+    order1 = Order(id="order_1", wix_order_id="wix_1", status=OrderStatus.PENDING, items=items, customer=customer, delivery=delivery, total_amount=10.0, currency="CHF", order_date=now, created_at=now, updated_at=now)
+    order2 = Order(id="order_2", wix_order_id="wix_2", status=OrderStatus.PROCESSING, items=items, customer=customer, delivery=delivery, total_amount=10.0, currency="CHF", order_date=now, created_at=now, updated_at=now)
+    order3 = Order(id="order_3", wix_order_id="wix_3", status=OrderStatus.PENDING, items=items, customer=customer, delivery=delivery, total_amount=10.0, currency="CHF", order_date=now, created_at=now, updated_at=now)
     
-    def test_save_and_get_print_job(self, temp_db):
-        """Test saving and retrieving print jobs."""
-        # First create an order
-        items = [OrderItem(id="1", name="Test Item", quantity=1, price=10.0)]
-        customer = CustomerInfo(email="test@example.com")
-        delivery = DeliveryInfo()
-        
-        order = Order(
-            id="test_order", wix_order_id="wix_order", status=OrderStatus.PENDING,
-            items=items, customer=customer, delivery=delivery, total_amount=10.0
-        )
-        temp_db.save_order(order)
-        
-        # Create print job
-        job = PrintJob(
-            order_id="test_order",
-            job_type="kitchen",
-            status=PrintJobStatus.PENDING,
-            content="Test receipt content",
-            printer_name="Kitchen Printer"
-        )
-        
-        # Save print job
-        job_id = temp_db.save_print_job(job)
-        assert job_id is not None
-        
-        # Update job with ID and save again (test update path)
-        job.id = job_id
-        job.status = PrintJobStatus.COMPLETED
-        job.printed_at = datetime.now()
-        
-        updated_job_id = temp_db.save_print_job(job)
-        assert updated_job_id == job_id
+    db_instance.save_order(order1)
+    db_instance.save_order(order2)
+    db_instance.save_order(order3)
     
-    def test_get_pending_print_jobs(self, temp_db):
-        """Test retrieving pending print jobs."""
-        # Create test order
-        items = [OrderItem(id="1", name="Test Item", quantity=1, price=10.0)]
-        customer = CustomerInfo(email="test@example.com")
-        delivery = DeliveryInfo()
-        
-        order = Order(
-            id="test_order", wix_order_id="wix_order", status=OrderStatus.PENDING,
-            items=items, customer=customer, delivery=delivery, total_amount=10.0
-        )
-        temp_db.save_order(order)
-        
-        # Create print jobs with different statuses
-        job1 = PrintJob(
-            order_id="test_order",
-            job_type="kitchen",
-            status=PrintJobStatus.PENDING,
-            content="Kitchen receipt"
-        )
-        job2 = PrintJob(
-            order_id="test_order",
-            job_type="customer",
-            status=PrintJobStatus.COMPLETED,
-            content="Customer receipt"
-        )
-        job3 = PrintJob(
-            order_id="test_order",
-            job_type="delivery",
-            status=PrintJobStatus.PENDING,
-            content="Delivery receipt"
-        )
-        
-        # Save jobs
-        temp_db.save_print_job(job1)
-        temp_db.save_print_job(job2)
-        temp_db.save_print_job(job3)
-        
-        # Get pending jobs
-        pending_jobs = temp_db.get_pending_print_jobs()
-        assert len(pending_jobs) == 2
-        
-        # Check job types
-        job_types = [job.job_type for job in pending_jobs]
-        assert "kitchen" in job_types
-        assert "delivery" in job_types
-        assert "customer" not in job_types  # This one is completed
+    pending_orders = db_instance.get_orders_by_status(OrderStatus.PENDING)
+    assert len(pending_orders) == 2
     
-    def test_get_pending_print_jobs_with_max_attempts(self, temp_db):
-        """Test that jobs with max attempts reached are not returned."""
-        # Create test order
-        items = [OrderItem(id="1", name="Test Item", quantity=1, price=10.0)]
-        customer = CustomerInfo(email="test@example.com")
-        delivery = DeliveryInfo()
-        
-        order = Order(
-            id="test_order", wix_order_id="wix_order", status=OrderStatus.PENDING,
-            items=items, customer=customer, delivery=delivery, total_amount=10.0
-        )
-        temp_db.save_order(order)
-        
-        # Create job that has reached max attempts
-        job = PrintJob(
-            order_id="test_order",
-            job_type="kitchen",
-            status=PrintJobStatus.PENDING,
-            content="Kitchen receipt",
-            attempts=3,  # Equal to max_attempts
-            max_attempts=3
-        )
-        
-        temp_db.save_print_job(job)
-        
-        # Should not return this job
-        pending_jobs = temp_db.get_pending_print_jobs()
-        assert len(pending_jobs) == 0
+    processing_orders = db_instance.get_orders_by_status(OrderStatus.PROCESSING)
+    assert len(processing_orders) == 1
+    assert processing_orders[0].id == "order_2"
+
+def test_save_and_get_print_job(db_instance):
+    """Test saving and retrieving print jobs."""
+    now = datetime.now()
+    order = Order(id="test_order", wix_order_id="wix_order", status=OrderStatus.PENDING, items=[], customer=CustomerInfo(), delivery=DeliveryInfo(), total_amount=10.0, currency="CHF", order_date=now, created_at=now, updated_at=now)
+    db_instance.save_order(order)
     
-    def test_database_error_handling(self):
-        """Test database error handling."""
-        # Test with invalid database path
-        with pytest.raises(DatabaseError):
-            Database("/invalid/path/database.db")
+    job = PrintJob(
+        order_id="test_order",
+        job_type="kitchen",
+        status=PrintJobStatus.PENDING,
+        content="Test receipt content",
+        created_at=now,
+        updated_at=now
+    )
     
-    def test_connection_with_foreign_keys(self, temp_db):
-        """Test that foreign key constraints are enabled."""
-        conn = temp_db.get_connection()
-        
-        # Check foreign keys are enabled
-        cursor = conn.execute("PRAGMA foreign_keys")
-        result = cursor.fetchone()
-        assert result[0] == 1  # Foreign keys should be enabled
-        
-        conn.close()
+    job_id = db_instance.save_print_job(job)
+    assert job_id is not None
     
-    def test_order_update(self, temp_db):
-        """Test updating an existing order."""
-        # Create and save initial order
-        items = [OrderItem(id="1", name="Test Item", quantity=1, price=10.0)]
-        customer = CustomerInfo(email="test@example.com")
-        delivery = DeliveryInfo()
-        
-        order = Order(
-            id="test_order", wix_order_id="wix_order", status=OrderStatus.PENDING,
-            items=items, customer=customer, delivery=delivery, total_amount=10.0
-        )
-        temp_db.save_order(order)
-        
-        # Update order status
-        order.status = OrderStatus.PROCESSING
-        order.total_amount = 15.0
-        
-        # Save updated order
-        result = temp_db.save_order(order)
-        assert result is True
-        
-        # Retrieve and verify update
-        updated_order = temp_db.get_order("test_order")
-        assert updated_order.status == OrderStatus.PROCESSING
-        assert updated_order.total_amount == 15.0
+    job.id = job_id
+    job.status = PrintJobStatus.COMPLETED
+    job.printed_at = datetime.now()
+    
+    updated_job_id = db_instance.save_print_job(job)
+    assert updated_job_id == job_id
+
+def test_get_pending_print_jobs(db_instance):
+    """Test retrieving pending print jobs."""
+    now = datetime.now()
+    order = Order(id="test_order", wix_order_id="wix_order", status=OrderStatus.PENDING, items=[], customer=CustomerInfo(), delivery=DeliveryInfo(), total_amount=10.0, currency="CHF", order_date=now, created_at=now, updated_at=now)
+    db_instance.save_order(order)
+    
+    job1 = PrintJob(order_id="test_order", job_type="kitchen", status=PrintJobStatus.PENDING, content="Kitchen receipt", created_at=now, updated_at=now)
+    job2 = PrintJob(order_id="test_order", job_type="customer", status=PrintJobStatus.COMPLETED, content="Customer receipt", created_at=now, updated_at=now)
+    job3 = PrintJob(order_id="test_order", job_type="delivery", status=PrintJobStatus.PENDING, content="Delivery receipt", created_at=now, updated_at=now)
+    
+    db_instance.save_print_job(job1)
+    db_instance.save_print_job(job2)
+    db_instance.save_print_job(job3)
+    
+    pending_jobs = db_instance.get_pending_print_jobs()
+    assert len(pending_jobs) == 2
+    
+    job_types = {job.job_type for job in pending_jobs}
+    assert "kitchen" in job_types
+    assert "delivery" in job_types
+    assert "customer" not in job_types
+
+def test_get_pending_print_jobs_with_max_attempts(db_instance):
+    """Test that jobs with max attempts reached are not returned."""
+    now = datetime.now()
+    order = Order(id="test_order", wix_order_id="wix_order", status=OrderStatus.PENDING, items=[], customer=CustomerInfo(), delivery=DeliveryInfo(), total_amount=10.0, currency="CHF", order_date=now, created_at=now, updated_at=now)
+    db_instance.save_order(order)
+    
+    job = PrintJob(
+        order_id="test_order", job_type="kitchen", status=PrintJobStatus.PENDING,
+        content="Kitchen receipt", attempts=3, max_attempts=3, created_at=now, updated_at=now
+    )
+    
+    db_instance.save_print_job(job)
+    
+    pending_jobs = db_instance.get_pending_print_jobs()
+    assert len(pending_jobs) == 0
+
+def test_order_update(db_instance):
+    """Test updating an existing order using ON CONFLICT."""
+    now = datetime.now()
+    order = Order(id="test_order", wix_order_id="wix_order", status=OrderStatus.PENDING, items=[], customer=CustomerInfo(), delivery=DeliveryInfo(), total_amount=10.0, currency="CHF", order_date=now, created_at=now, updated_at=now)
+    db_instance.save_order(order)
+    
+    # Create a new order object with the same wix_order_id to simulate an update
+    updated_order_obj = Order(id="test_order_new_id", wix_order_id="wix_order", status=OrderStatus.PROCESSING, items=[], customer=CustomerInfo(), delivery=DeliveryInfo(), total_amount=15.0, currency="CHF", order_date=now, created_at=now, updated_at=datetime.now())
+    
+    db_instance.save_order(updated_order_obj)
+    
+    # Retrieve by the unique wix_order_id
+    retrieved_order = db_instance.get_order_by_wix_id("wix_order")
+    assert retrieved_order is not None
+    # The original ID should be kept, as wix_order_id is the conflict target
+    assert retrieved_order.id == "test_order" 
+    assert retrieved_order.status == OrderStatus.PROCESSING
+    assert retrieved_order.total_amount == 15.0

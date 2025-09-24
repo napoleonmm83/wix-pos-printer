@@ -113,6 +113,36 @@ class WixClient:
             logger.error(f"Error searching orders: {e}")
             raise WixAPIError(f"Network error: {str(e)}")
 
+    def get_order(self, order_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a single order by its ID.
+        Uses GET /ecom/v1/orders/{orderId}.
+        """
+        if not order_id:
+            logger.warning("get_order called with no order_id")
+            return None
+        
+        try:
+            url = f"{self.base_url}/ecom/v1/orders/{order_id}"
+            response = self.session.get(url, timeout=20)
+            
+            if response.status_code == 200:
+                order_data = response.json().get("order")
+                if not order_data:
+                    logger.warning(f"Order {order_id} not found in API response body.")
+                    return None
+                return order_data
+            elif response.status_code == 404:
+                logger.warning(f"Order {order_id} not found (404).")
+                return None
+            else:
+                logger.error(f"Failed to get order {order_id}: {response.status_code} - {response.text}")
+                raise WixAPIError(f"API request failed: {response.status_code}")
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error getting order {order_id}: {e}")
+            raise WixAPIError(f"Network error: {str(e)}")
+
     def get_orders_since(self, from_date: Optional[str], status: Optional[str], limit: int = 100, cursor: Optional[str] = None) -> Dict[str, Any]:
         """
         Search orders with a start date and optional status filter.
