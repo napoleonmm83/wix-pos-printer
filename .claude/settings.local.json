@@ -31,7 +31,10 @@
       "Bash(taskkill:*)",
       "Bash(dir:*)",
       "Bash(find:*)",
-      "mcp__archon__rag_search_code_examples"
+      "mcp__archon__rag_search_code_examples",
+      "mcp__archon__manage_project",
+      "Bash(chcp:*)",
+      "mcp__archon__find_documents"
     ],
     "deny": [],
     "ask": []

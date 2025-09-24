@@ -1,0 +1,85 @@
+# Regional settings for different countries/regions
+# Handles currency, tax rates, and legal requirements
+
+regions:
+  switzerland:
+    currency:
+      code: "CHF"
+      symbol: "CHF"
+      decimal_places: 2
+      format: "{symbol} {amount:.2f}"  # "CHF 26.00"
+
+    tax:
+      food_rate: 0.0          # 0% for basic food items
+      beverage_rate: 0.077    # 7.7% for beverages
+      service_rate: 0.077     # 7.7% for services
+      show_breakdown: true
+      business_id_format: "CHE-XXX.XXX.XXX MWST"
+
+    legal:
+      receipt_requirements:
+        - "business_name"
+        - "address"
+        - "tax_id"
+        - "date_time"
+        - "items_breakdown"
+      footer_text: "Lebensmittel: 0% MwSt"
+
+  germany:
+    currency:
+      code: "EUR"
+      symbol: "€"
+      decimal_places: 2
+      format: "{amount:.2f}{symbol}"  # "26.00€"
+
+    tax:
+      food_rate: 0.07         # 7% reduced rate
+      standard_rate: 0.19     # 19% standard rate
+      show_breakdown: true
+      business_id_format: "DE123456789"
+
+    legal:
+      receipt_requirements:
+        - "business_name"
+        - "address"
+        - "tax_breakdown"
+      footer_text: "Kleinunternehmer gem. §19 UStG"
+
+  austria:
+    currency:
+      code: "EUR"
+      symbol: "€"
+      decimal_places: 2
+      format: "€ {amount:.2f}"
+
+    tax:
+      food_rate: 0.10         # 10% reduced rate
+      standard_rate: 0.20     # 20% standard rate
+      show_breakdown: true
+      business_id_format: "ATU12345678"
+
+  usa:
+    currency:
+      code: "USD"
+      symbol: "$"
+      decimal_places: 2
+      format: "${amount:.2f}"
+
+    tax:
+      varies_by_state: true
+      default_rate: 0.0875    # NYC example
+      show_breakdown: true
+      business_id_format: "EIN: XX-XXXXXXX"
+
+  uk:
+    currency:
+      code: "GBP"
+      symbol: "£"
+      decimal_places: 2
+      format: "£{amount:.2f}"
+
+    tax:
+      food_rate: 0.0          # 0% for most food
+      standard_rate: 0.20     # 20% VAT
+      show_breakdown: true
+      business_id_format: "GB123456789"

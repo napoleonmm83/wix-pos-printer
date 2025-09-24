@@ -243,6 +243,7 @@ async def auto_check_new_orders():
             new_orders = 0
             updated_orders = 0
             skipped_orders = 0
+            canceled_orders = 0
 
             for order in orders:
                 order_id = order.get('id')
@@ -267,6 +268,12 @@ async def auto_check_new_orders():
                 logging.info(f"   Status: {order_status} | Payment: {payment_status} | Fulfillment: {fulfillment_status}")
                 logging.info(f"   Amount: {total_amount} {currency}")
                 logging.info(f"   Created: {created_date[:19]} | Updated: {updated_date[:19]}")
+
+                # Filter out CANCELED orders - do not process them
+                if order_status and order_status.upper() in ['CANCELED', 'CANCELLED']:
+                    logging.info(f"   [SKIP] Order #{order_number} is CANCELED - canceled orders are not printed")
+                    canceled_orders += 1
+                    continue
 
                 is_processed = is_order_already_processed(order_id)
                 is_updated = has_order_been_updated(order_id, updated_date)
@@ -324,6 +331,7 @@ async def auto_check_new_orders():
             logging.info(f"   New orders processed: {new_orders}")
             logging.info(f"   Updated orders processed: {updated_orders}")
             logging.info(f"   Orders skipped (already processed): {skipped_orders}")
+            logging.info(f"   CANCELED orders filtered out: {canceled_orders}")
 
             if new_orders > 0 or updated_orders > 0:
                 logging.info(f"[ACTION] {new_orders + updated_orders} orders sent to printer service")

@@ -1,0 +1,86 @@
+# Cuisine-specific receipt templates for different restaurant types
+# Users can select a template and customize it further
+
+templates:
+  thai:
+    name: "Thai Restaurant"
+    primary_emoji: "🍜"
+    cuisine_emojis:
+      - "🍛"  # curry
+      - "🍲"  # soup
+      - "🥢"  # chopsticks
+    service_emojis:
+      pickup: "🥡"
+      delivery: "🚗"
+    thank_you:
+      message: "🙏 Kob Khun Ka! 🙏"
+      translation: "(Vielen Dank auf Thai)"
+    prep_time_modifiers:
+      pad_thai: +3
+      curry: +4
+      som_tam: +2
+      nam_tok: +3
+
+  italian:
+    name: "Ristorante Italiano"
+    primary_emoji: "🍝"
+    cuisine_emojis:
+      - "🍕"  # pizza
+      - "🍝"  # pasta
+      - "🧀"  # cheese
+    service_emojis:
+      pickup: "📦"
+      delivery: "🛵"
+    thank_you:
+      message: "🇮🇹 Grazie Mille! 🇮🇹"
+      translation: "(Vielen Dank auf Italienisch)"
+    prep_time_modifiers:
+      pizza: +8
+      pasta: +5
+      risotto: +12
+
+  mexican:
+    name: "Restaurante Mexicano"
+    primary_emoji: "🌮"
+    cuisine_emojis:
+      - "🌯"  # burrito
+      - "🌮"  # taco
+      - "🌶️"  # chili
+    service_emojis:
+      pickup: "🛍️"
+      delivery: "🚚"
+    thank_you:
+      message: "🇲🇽 ¡Muchas Gracias! 🇲🇽"
+      translation: "(Vielen Dank auf Spanisch)"
+    prep_time_modifiers:
+      tacos: +2
+      burrito: +4
+      quesadilla: +3
+
+  german:
+    name: "Deutsche Küche"
+    primary_emoji: "🥨"
+    cuisine_emojis:
+      - "🍺"  # beer
+      - "🥖"  # bread
+      - "🥩"  # meat
+    service_emojis:
+      pickup: "📦"
+      delivery: "🚐"
+    thank_you:
+      message: "🇩🇪 Vielen Dank! 🇩🇪"
+      translation: "(Herzlichen Dank)"
+
+  generic:
+    name: "Restaurant"
+    primary_emoji: "🍽️"
+    cuisine_emojis:
+      - "🍴"
+      - "🥗"
+      - "🍰"
+    service_emojis:
+      pickup: "📦"
+      delivery: "🚗"
+    thank_you:
+      message: "✨ Vielen Dank! ✨"
+      translation: "(Thank you very much)"

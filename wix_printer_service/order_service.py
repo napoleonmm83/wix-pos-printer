@@ -71,22 +71,30 @@ class OrderService:
     def process_webhook_order(self, webhook_data: Dict[str, Any]) -> Optional[Order]:
         """
         Process an order from webhook data.
-        
+
         Args:
             webhook_data: Raw webhook data from Wix
-            
+
         Returns:
             Processed Order instance or None if processing failed
         """
         try:
             # Validate webhook data structure
             self._validate_webhook_data(webhook_data)
-            
+
             # Extract order data from webhook
             order_data = webhook_data.get('data', {})
             if not order_data:
                 raise OrderValidationError("No order data found in webhook")
-            
+
+            # Create order from Wix data
+            order = Order.from_wix_data(order_data)
+
+            # Filter out CANCELED orders - do not process them
+            if order.status == OrderStatus.CANCELLED:
+                logger.info(f"Skipping CANCELED order {order.id} - canceled orders are not printed")
+                return None
+
             # Validate order data
             self._validate_order(order)
             logger.info("Order validation complete, proceeding to database operations.")
@@ -246,26 +254,31 @@ class OrderService:
     def process_offline_order(self, order_data: Dict[str, Any]) -> Optional[Order]:
         """
         Process an order in offline mode.
-        
+
         Args:
             order_data: Order data from webhook
-            
+
         Returns:
             Processed Order instance or None if processing failed
         """
         try:
             logger.info("Processing order in offline mode")
-            
+
             # Generate local order ID if needed
             if 'id' not in order_data or not order_data['id']:
                 order_data['id'] = self.generate_local_order_id()
-            
+
             # Create Order instance
             order = Order.from_wix_data(order_data)
-            
+
+            # Filter out CANCELED orders - do not process them even offline
+            if order.status == OrderStatus.CANCELLED:
+                logger.info(f"Skipping CANCELED order {order.id} in offline mode - canceled orders are not printed")
+                return None
+
             # Mark as offline order
             order.status = OrderStatus.PENDING
-            
+
             # Validate order data
             self._validate_order(order)
             
@@ -319,6 +332,17 @@ class OrderService:
         """
         try:
             order = Order.from_wix_data(wix_data)
+
+            # Filter out CANCELED orders - do not process them
+            if order.status == OrderStatus.CANCELLED:
+                logger.info(f"Skipping CANCELED order {order.id} during API ingest - canceled orders are not printed")
+                return {
+                    "order_id": order.id,
+                    "created_jobs": 0,
+                    "existing": False,
+                    "skipped": "CANCELED_ORDER"
+                }
+
             # Validate order data
             self._validate_order(order)
 
