@@ -28,7 +28,10 @@
       "Bash(chmod:*)",
       "Bash(./scripts/update-config.sh:*)",
       "Bash(pkill:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(dir:*)",
+      "Bash(find:*)",
+      "mcp__archon__rag_search_code_examples"
     ],
     "deny": [],
     "ask": []

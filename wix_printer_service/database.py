@@ -141,20 +141,33 @@ class Database:
             logger.error(f"Error initializing database: {e}")
             raise DatabaseError(f"Database initialization failed: {e}")
 
+    def _sanitize_string(self, value: Any) -> Any:
+        """Sanitize string values to remove NUL characters that PostgreSQL doesn't support."""
+        if isinstance(value, str):
+            return value.replace('\u0000', '').replace('\x00', '')
+        return value
+
     def save_order(self, order: Order) -> bool:
         """Saves or updates an order in the database using ON CONFLICT."""
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     order_dict = order.to_dict()
-                    
-                    # Use INSERT ... ON CONFLICT for "upsert" behavior
-                    # Sanitize JSON strings to remove null characters, which PostgreSQL does not support.
-                    # Note: order_dict values are already JSON strings from to_dict(), don't double-encode
-                    items_json_str = order_dict['items_json'].replace('\u0000', '').replace('\x00', '') if order_dict['items_json'] else '{}'
-                    customer_json_str = order_dict['customer_json'].replace('\u0000', '').replace('\x00', '') if order_dict['customer_json'] else '{}'
-                    delivery_json_str = order_dict['delivery_json'].replace('\u0000', '').replace('\x00', '') if order_dict['delivery_json'] else '{}'
-                    raw_data_json_str = order_dict['raw_data_json'].replace('\u0000', '').replace('\x00', '') if order_dict['raw_data_json'] else '{}'
+
+                    # Sanitize ALL string fields to remove NUL characters
+                    order_id = self._sanitize_string(order_dict['id'])
+                    wix_order_id = self._sanitize_string(order_dict['wix_order_id'])
+                    status = self._sanitize_string(order_dict['status'])
+                    currency = self._sanitize_string(order_dict['currency'])
+                    order_date = self._sanitize_string(order_dict['order_date'])
+                    created_at = self._sanitize_string(order_dict['created_at'])
+                    updated_at = self._sanitize_string(order_dict['updated_at'])
+
+                    # Sanitize JSON strings
+                    items_json_str = self._sanitize_string(order_dict['items_json']) if order_dict['items_json'] else '{}'
+                    customer_json_str = self._sanitize_string(order_dict['customer_json']) if order_dict['customer_json'] else '{}'
+                    delivery_json_str = self._sanitize_string(order_dict['delivery_json']) if order_dict['delivery_json'] else '{}'
+                    raw_data_json_str = self._sanitize_string(order_dict['raw_data_json']) if order_dict['raw_data_json'] else '{}'
 
                     cursor.execute("""
                         INSERT INTO orders (
@@ -173,11 +186,11 @@ class Database:
                             updated_at = EXCLUDED.updated_at,
                             raw_data_json = EXCLUDED.raw_data_json;
                     """, (
-                        order_dict['id'], order_dict['wix_order_id'], order_dict['status'],
+                        order_id, wix_order_id, status,
                         items_json_str, customer_json_str,
                         delivery_json_str, order_dict['total_amount'],
-                        order_dict['currency'], order_dict['order_date'],
-                        order_dict['created_at'], order_dict['updated_at'],
+                        currency, order_date,
+                        created_at, updated_at,
                         raw_data_json_str
                     ))
             logger.info(f"Order {order.id} saved successfully")
@@ -231,7 +244,18 @@ class Database:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     job_dict = print_job.to_dict()
-                    
+
+                    # Sanitize all string fields to remove NUL characters
+                    order_id = self._sanitize_string(job_dict['order_id'])
+                    job_type = self._sanitize_string(job_dict['job_type'])
+                    status = self._sanitize_string(job_dict['status'])
+                    content = self._sanitize_string(job_dict['content'])
+                    printer_name = self._sanitize_string(job_dict['printer_name'])
+                    created_at = self._sanitize_string(job_dict['created_at'])
+                    updated_at = self._sanitize_string(job_dict['updated_at'])
+                    printed_at = self._sanitize_string(job_dict['printed_at'])
+                    error_message = self._sanitize_string(job_dict['error_message'])
+
                     if print_job.id:
                         # Update existing job
                         cursor.execute("""
@@ -241,10 +265,9 @@ class Database:
                                 updated_at = %s, printed_at = %s, error_message = %s
                             WHERE id = %s
                         """, (
-                            job_dict['order_id'], job_dict['job_type'], job_dict['status'],
-                            job_dict['content'], job_dict['printer_name'], job_dict['attempts'],
-                            job_dict['max_attempts'], job_dict['updated_at'],
-                            job_dict['printed_at'], job_dict['error_message'], print_job.id
+                            order_id, job_type, status, content, printer_name,
+                            job_dict['attempts'], job_dict['max_attempts'],
+                            updated_at, printed_at, error_message, print_job.id
                         ))
                         job_id = print_job.id
                     else:
@@ -257,10 +280,9 @@ class Database:
                             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             RETURNING id;
                         """, (
-                            job_dict['order_id'], job_dict['job_type'], job_dict['status'],
-                            job_dict['content'], job_dict['printer_name'], job_dict['attempts'],
-                            job_dict['max_attempts'], job_dict['created_at'],
-                            job_dict['updated_at'], job_dict['printed_at'], job_dict['error_message']
+                            order_id, job_type, status, content, printer_name,
+                            job_dict['attempts'], job_dict['max_attempts'],
+                            created_at, updated_at, printed_at, error_message
                         ))
                         job_id = cursor.fetchone()[0]
                     
