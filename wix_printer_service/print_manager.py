@@ -971,7 +971,7 @@ class PrintManager:
     def get_job_statistics(self) -> dict:
         """
         Get statistics about print jobs.
-        
+
         Returns:
             dict: Job statistics
         """
@@ -980,27 +980,27 @@ class PrintManager:
                 with conn.cursor() as cursor:
                     # Count jobs by status
                     cursor.execute("""
-                        SELECT status, COUNT(*) as count 
-                        FROM print_jobs 
+                        SELECT status, COUNT(*) as count
+                        FROM print_jobs
                         GROUP BY status
                     """)
                     status_counts = {row[0]: row[1] for row in cursor.fetchall()}
-                
-                # Get recent job counts (last 24 hours)
-                yesterday = datetime.now() - timedelta(days=1)
-                cursor.execute("""
-                    SELECT COUNT(*) FROM print_jobs 
-                    WHERE created_at > %s
-                """, (yesterday.isoformat(),))
-                recent_jobs = cursor.fetchone()[0]
-                
-                # Get failed jobs in last 24 hours
-                cursor.execute("""
-                    SELECT COUNT(*) FROM print_jobs 
-                    WHERE status = 'failed' AND updated_at > %s
-                """, (yesterday.isoformat(),))
-                recent_failures = cursor.fetchone()[0]
-                
+
+                    # Get recent job counts (last 24 hours)
+                    yesterday = datetime.now() - timedelta(days=1)
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM print_jobs
+                        WHERE created_at > %s
+                    """, (yesterday.isoformat(),))
+                    recent_jobs = cursor.fetchone()[0]
+
+                    # Get failed jobs in last 24 hours
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM print_jobs
+                        WHERE status = 'failed' AND updated_at > %s
+                    """, (yesterday.isoformat(),))
+                    recent_failures = cursor.fetchone()[0]
+
                 return {
                     'total_jobs': sum(status_counts.values()),
                     'pending_jobs': status_counts.get('pending', 0),
@@ -1012,7 +1012,7 @@ class PrintManager:
                     'printer_connected': self.printer_client.is_connected,
                     'manager_running': self._running
                 }
-                
+
         except Exception as e:
             logger.error(f"Error getting job statistics: {e}")
             return {
