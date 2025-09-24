@@ -76,17 +76,40 @@ class Order:
     updated_at: datetime = field(default_factory=datetime.now)
     raw_data: Optional[Dict[str, Any]] = None
     
+    @staticmethod
+    def _sanitize_data(data: Any) -> Any:
+        """
+        Sanitize data by removing NUL characters and other problematic characters.
+
+        Args:
+            data: Data to sanitize (can be dict, list, string, or other)
+
+        Returns:
+            Sanitized data
+        """
+        if isinstance(data, dict):
+            return {key: Order._sanitize_data(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [Order._sanitize_data(item) for item in data]
+        elif isinstance(data, str):
+            # Remove NUL characters and other control characters
+            return data.replace('\x00', '').replace('\u0000', '').strip()
+        else:
+            return data
+
     @classmethod
     def from_wix_data(cls, wix_data: Dict[str, Any]) -> 'Order':
         """
         Create an Order instance from Wix API data.
-        
+
         Args:
             wix_data: Raw order data from Wix API
-            
+
         Returns:
             Order instance
         """
+        # Sanitize the input data first to remove NUL characters
+        wix_data = cls._sanitize_data(wix_data)
         # Extract order items
         items = []
         for item_data in wix_data.get('lineItems', []):
@@ -181,7 +204,7 @@ class Order:
             total_amount=total_amount,
             currency=currency,
             order_date=order_date,
-            raw_data=wix_data
+            raw_data=wix_data  # Already sanitized above
         )
     
     def to_dict(self) -> Dict[str, Any]:
